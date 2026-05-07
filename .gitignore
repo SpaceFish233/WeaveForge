@@ -1,3 +1,19 @@
+# Build output
 build/bin
-node_modules
-frontend/dist
+*.exe
+
+# Dependencies
+node_modules/
+frontend/dist/
+
+# Database
+*.db
+.weaveforge/
+
+# System files
+.DS_Store
+Thumbs.db
+*.log
+
+# IDE
+.claude/
