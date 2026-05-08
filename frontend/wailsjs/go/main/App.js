@@ -26,12 +26,16 @@ export function ContextPush(arg1, arg2) {
   return window['go']['main']['App']['ContextPush'](arg1, arg2);
 }
 
-export function CreateChapter(arg1, arg2) {
-  return window['go']['main']['App']['CreateChapter'](arg1, arg2);
+export function CreateChapter(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CreateChapter'](arg1, arg2, arg3);
 }
 
 export function CreateCharacter(arg1) {
   return window['go']['main']['App']['CreateCharacter'](arg1);
+}
+
+export function CreateVolume(arg1) {
+  return window['go']['main']['App']['CreateVolume'](arg1);
 }
 
 export function DeleteChapter(arg1) {
@@ -56,6 +60,10 @@ export function DeleteSetting(arg1) {
 
 export function DeleteStyleProfile(arg1) {
   return window['go']['main']['App']['DeleteStyleProfile'](arg1);
+}
+
+export function DeleteVolume(arg1) {
+  return window['go']['main']['App']['DeleteVolume'](arg1);
 }
 
 export function GenerateBranches(arg1) {
@@ -138,6 +146,10 @@ export function ListStyleProfiles() {
   return window['go']['main']['App']['ListStyleProfiles']();
 }
 
+export function ListVolumes() {
+  return window['go']['main']['App']['ListVolumes']();
+}
+
 export function MarkAsDeprecated(arg1, arg2) {
   return window['go']['main']['App']['MarkAsDeprecated'](arg1, arg2);
 }
@@ -198,6 +210,10 @@ export function UpdateChapterTitle(arg1, arg2) {
   return window['go']['main']['App']['UpdateChapterTitle'](arg1, arg2);
 }
 
+export function UpdateChapterVolume(arg1, arg2) {
+  return window['go']['main']['App']['UpdateChapterVolume'](arg1, arg2);
+}
+
 export function UpdateCharacter(arg1, arg2) {
   return window['go']['main']['App']['UpdateCharacter'](arg1, arg2);
 }
@@ -212,6 +228,10 @@ export function UpdateForeshadowing(arg1, arg2) {
 
 export function UpdateSetting(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['UpdateSetting'](arg1, arg2, arg3, arg4);
+}
+
+export function UpdateVolume(arg1, arg2) {
+  return window['go']['main']['App']['UpdateVolume'](arg1, arg2);
 }
 
 export function UploadWorldSetting(arg1, arg2, arg3) {

@@ -15,7 +15,7 @@ func NewChapterService(db *gorm.DB) *ChapterService {
 	return &ChapterService{db: db}
 }
 
-func (s *ChapterService) CreateChapter(title, content string) (string, error) {
+func (s *ChapterService) CreateChapter(title, content, volumeID string) (string, error) {
 	id := uuid.New().String()
 	var maxOrder int
 	s.db.Raw("SELECT COALESCE(MAX(sort_order), 0) FROM chapters").Scan(&maxOrder)
@@ -26,6 +26,7 @@ func (s *ChapterService) CreateChapter(title, content string) (string, error) {
 		Content:   content,
 		SortOrder: maxOrder + 1,
 		NovelID:   "default",
+		VolumeID:  volumeID,
 	}
 
 	if err := s.db.Create(&chapter).Error; err != nil {
@@ -75,4 +76,11 @@ func (s *ChapterService) ReorderChapters(chapterIDs []string) error {
 		}
 	}
 	return nil
+}
+
+func (s *ChapterService) UpdateChapterVolume(chapterID, volumeID string) error {
+	return s.db.Model(&models.Chapter{}).
+		Where("id = ?", chapterID).
+		Update("volume_id", volumeID).
+		Error
 }

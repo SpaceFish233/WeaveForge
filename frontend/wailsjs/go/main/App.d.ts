@@ -22,9 +22,11 @@ export function ConfirmForeshadowing(arg1:foreshadow.CandidateForeshadow,arg2:st
 
 export function ContextPush(arg1:string,arg2:Array<string>):Promise<Array<inspiration.InspirationMatch>>;
 
-export function CreateChapter(arg1:string,arg2:string):Promise<string>;
+export function CreateChapter(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function CreateCharacter(arg1:models.Character):Promise<string>;
+
+export function CreateVolume(arg1:string):Promise<string>;
 
 export function DeleteChapter(arg1:string):Promise<void>;
 
@@ -37,6 +39,8 @@ export function DeleteInspiration(arg1:string):Promise<void>;
 export function DeleteSetting(arg1:string):Promise<void>;
 
 export function DeleteStyleProfile(arg1:string):Promise<void>;
+
+export function DeleteVolume(arg1:string):Promise<void>;
 
 export function GenerateBranches(arg1:plotengine.GenerationParams):Promise<Array<plotengine.Branch>>;
 
@@ -78,6 +82,8 @@ export function ListSettings():Promise<Array<setting.SettingInfo>>;
 
 export function ListStyleProfiles():Promise<Array<style.StyleProfileSummary>>;
 
+export function ListVolumes():Promise<Array<models.VolumeSummary>>;
+
 export function MarkAsDeprecated(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function MergeBranches(arg1:Array<string>):Promise<string>;
@@ -108,6 +114,8 @@ export function UpdateChapter(arg1:string,arg2:string):Promise<void>;
 
 export function UpdateChapterTitle(arg1:string,arg2:string):Promise<void>;
 
+export function UpdateChapterVolume(arg1:string,arg2:string):Promise<void>;
+
 export function UpdateCharacter(arg1:string,arg2:models.Character):Promise<void>;
 
 export function UpdateConfig(arg1:config.Config):Promise<void>;
@@ -115,5 +123,7 @@ export function UpdateConfig(arg1:config.Config):Promise<void>;
 export function UpdateForeshadowing(arg1:string,arg2:Record<string, any>):Promise<void>;
 
 export function UpdateSetting(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function UpdateVolume(arg1:string,arg2:string):Promise<void>;
 
 export function UploadWorldSetting(arg1:string,arg2:string,arg3:string):Promise<void>;

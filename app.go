@@ -20,6 +20,7 @@ import (
 type App struct {
 	ctx              context.Context
 	chapter          *services.ChapterService
+	volume           *services.VolumeService
 	characterAgent   *character.Agent
 	settingAgent     *setting.Agent
 	styleAgent       *style.Agent
@@ -30,25 +31,33 @@ type App struct {
 	appConfig        *config.Config
 }
 
-func NewApp(cs *services.ChapterService, ca *character.Agent, sa *setting.Agent, sta *style.Agent, ia *inspiration.Agent, fa *foreshadow.Agent, pe *plotengine.Agent, co *coordinator.Coordinator, cfg *config.Config) *App {
-	return &App{chapter: cs, characterAgent: ca, settingAgent: sa, styleAgent: sta, inspirationAgent: ia, foreshadowAgent: fa, plotEngine: pe, coordinator: co, appConfig: cfg}
+func NewApp(cs *services.ChapterService, vs *services.VolumeService, ca *character.Agent, sa *setting.Agent, sta *style.Agent, ia *inspiration.Agent, fa *foreshadow.Agent, pe *plotengine.Agent, co *coordinator.Coordinator, cfg *config.Config) *App {
+	return &App{chapter: cs, volume: vs, characterAgent: ca, settingAgent: sa, styleAgent: sta, inspirationAgent: ia, foreshadowAgent: fa, plotEngine: pe, coordinator: co, appConfig: cfg}
 }
 
 func (a *App) startup(ctx context.Context) { a.ctx = ctx }
 
 // ─── Chapter API ────────────────────────────────────────────────────
 
-func (a *App) CreateChapter(title, content string) (string, error)     { return a.chapter.CreateChapter(title, content) }
-func (a *App) UpdateChapter(chapterID, content string) error           { return a.chapter.UpdateChapter(chapterID, content) }
-func (a *App) UpdateChapterTitle(chapterID, title string) error        { return a.chapter.UpdateChapterTitle(chapterID, title) }
-func (a *App) DeleteChapter(chapterID string) error                    { return a.chapter.DeleteChapter(chapterID) }
-func (a *App) GetChapter(chapterID string) (models.Chapter, error)     { return a.chapter.GetChapter(chapterID) }
-func (a *App) ListChapters() ([]models.ChapterSummary, error)          { return a.chapter.ListChapters() }
-func (a *App) ReorderChapters(chapterIDs []string) error               { return a.chapter.ReorderChapters(chapterIDs) }
+func (a *App) CreateChapter(title, content, volumeID string) (string, error) { return a.chapter.CreateChapter(title, content, volumeID) }
+func (a *App) UpdateChapter(chapterID, content string) error                 { return a.chapter.UpdateChapter(chapterID, content) }
+func (a *App) UpdateChapterTitle(chapterID, title string) error              { return a.chapter.UpdateChapterTitle(chapterID, title) }
+func (a *App) UpdateChapterVolume(chapterID, volumeID string) error          { return a.chapter.UpdateChapterVolume(chapterID, volumeID) }
+func (a *App) DeleteChapter(chapterID string) error                          { return a.chapter.DeleteChapter(chapterID) }
+func (a *App) GetChapter(chapterID string) (models.Chapter, error)           { return a.chapter.GetChapter(chapterID) }
+func (a *App) ListChapters() ([]models.ChapterSummary, error)                { return a.chapter.ListChapters() }
+func (a *App) ReorderChapters(chapterIDs []string) error                     { return a.chapter.ReorderChapters(chapterIDs) }
 
 func (a *App) ImportDocument(filePath string) ([]string, error) { chs, err := parser.ParseFile(filePath); if err != nil { return nil, err }; return a.importChapters(chs) }
 func (a *App) ImportContent(filename, content string) ([]string, error) { ext := ""; if idx := strings.LastIndex(filename, "."); idx >= 0 { ext = filename[idx:] }; return a.importChapters(parser.ParseContent(content, ext)) }
-func (a *App) importChapters(chs []parser.ParsedChapter) ([]string, error) { var ids []string; for _, ch := range chs { id, err := a.chapter.CreateChapter(ch.Title, ch.Content); if err != nil { return ids, err }; ids = append(ids, id) }; return ids, nil }
+func (a *App) importChapters(chs []parser.ParsedChapter) ([]string, error) { var ids []string; for _, ch := range chs { id, err := a.chapter.CreateChapter(ch.Title, ch.Content, ""); if err != nil { return ids, err }; ids = append(ids, id) }; return ids, nil }
+
+// ─── Volume API ─────────────────────────────────────────────────────
+
+func (a *App) CreateVolume(name string) (string, error)       { return a.volume.CreateVolume(name) }
+func (a *App) ListVolumes() ([]models.VolumeSummary, error)    { return a.volume.ListVolumes() }
+func (a *App) UpdateVolume(id, name string) error              { return a.volume.UpdateVolume(id, name) }
+func (a *App) DeleteVolume(id string) error                    { return a.volume.DeleteVolume(id) }
 
 // ─── Character API ─────────────────────────────────────────────────
 

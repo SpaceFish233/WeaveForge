@@ -356,6 +356,7 @@ export namespace models {
 	    content: string;
 	    sort_order: number;
 	    novel_id: string;
+	    volume_id: string;
 	    // Go type: time
 	    created_at: any;
 	    // Go type: time
@@ -372,6 +373,7 @@ export namespace models {
 	        this.content = source["content"];
 	        this.sort_order = source["sort_order"];
 	        this.novel_id = source["novel_id"];
+	        this.volume_id = source["volume_id"];
 	        this.created_at = this.convertValues(source["created_at"], null);
 	        this.updated_at = this.convertValues(source["updated_at"], null);
 	    }
@@ -398,6 +400,7 @@ export namespace models {
 	    id: string;
 	    title: string;
 	    sort_order: number;
+	    volume_id: string;
 	    // Go type: time
 	    created_at: any;
 	    // Go type: time
@@ -412,6 +415,7 @@ export namespace models {
 	        this.id = source["id"];
 	        this.title = source["title"];
 	        this.sort_order = source["sort_order"];
+	        this.volume_id = source["volume_id"];
 	        this.created_at = this.convertValues(source["created_at"], null);
 	        this.updated_at = this.convertValues(source["updated_at"], null);
 	    }
@@ -589,6 +593,22 @@ export namespace models {
 		    }
 		    return a;
 		}
+	}
+	export class VolumeSummary {
+	    id: string;
+	    name: string;
+	    sort_order: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new VolumeSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.sort_order = source["sort_order"];
+	    }
 	}
 	export class WorldSetting {
 	    id: string;

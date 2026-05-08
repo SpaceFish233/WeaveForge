@@ -36,6 +36,7 @@ func main() {
 	config.DecryptConfig(appConfig)
 
 	chapterService := services.NewChapterService(db.DB)
+	volumeService := services.NewVolumeService(db.DB)
 
 	// Build embedder: llamacpp (GGUF) or hash fallback
 	var embedder vectordb.Embedder
@@ -80,7 +81,7 @@ func main() {
 		Setting: settingAgent, Style: styleAgent,
 		Foreshadow: foreshadowAgent, Inspiration: inspirationAgent,
 	})
-	app := NewApp(chapterService, characterAgent, settingAgent, styleAgent, inspirationAgent, foreshadowAgent, plotEngine, coord, appConfig)
+	app := NewApp(chapterService, volumeService, characterAgent, settingAgent, styleAgent, inspirationAgent, foreshadowAgent, plotEngine, coord, appConfig)
 
 	if err := wails.Run(&options.App{
 		Title:  "WeaveForge",
