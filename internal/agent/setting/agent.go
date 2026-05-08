@@ -184,16 +184,20 @@ func countOccurrences(text, keyword string, caseSensitive, wholeWord bool) (int,
 	return len(positions), positions
 }
 
-func extractSnippet(text string, pos int, keyword string, contextWidth int) string {
-	start := pos - contextWidth
+func extractSnippet(text string, bytePos int, keyword string, contextWidth int) string {
+	// countOccurrences returns byte positions; convert to rune positions for []rune slicing
+	runes := []rune(text)
+	runePos := utf8.RuneCountInString(text[:bytePos])
+	kwLen := utf8.RuneCountInString(keyword)
+
+	start := runePos - contextWidth
 	if start < 0 {
 		start = 0
 	}
-	end := pos + utf8.RuneCountInString(keyword) + contextWidth
-	if end > utf8.RuneCountInString(text) {
-		end = utf8.RuneCountInString(text)
+	end := runePos + kwLen + contextWidth
+	if end > len(runes) {
+		end = len(runes)
 	}
-	runes := []rune(text)
 	if start > len(runes) {
 		start = len(runes)
 	}

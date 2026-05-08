@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,7 @@ type LlamaCppEmbedder struct {
 	cmd    *exec.Cmd
 	client *http.Client
 
+	mu        sync.Mutex
 	dimension int // auto-detected on first Embed() call
 }
 
@@ -180,9 +182,11 @@ func (e *LlamaCppEmbedder) Embed(ctx context.Context, text string) ([]float32, e
 	}
 
 	// Auto-detect dimension from first response
+	e.mu.Lock()
 	if e.dimension <= 0 || len(f32) > 0 {
 		e.dimension = len(f32)
 	}
+	e.mu.Unlock()
 
 	return f32, nil
 }

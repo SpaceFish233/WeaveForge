@@ -3,7 +3,9 @@ package coordinator
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"weaveforge/internal/agent/foreshadow"
@@ -24,7 +26,7 @@ type AgentHolders struct {
 // Coordinator orchestrates all agents and pushes results to the frontend.
 type Coordinator struct {
 	agents    AgentHolders
-	intensity int // 0-10
+	intensity atomic.Int32 // 0-10
 
 	ctx      context.Context
 	ctxMu    sync.RWMutex
@@ -40,13 +42,14 @@ type Coordinator struct {
 
 // New creates a coordinator with the given agent holders.
 func New(agents AgentHolders) *Coordinator {
-	return &Coordinator{
+	c := &Coordinator{
 		agents:    agents,
-		intensity: 5,
 		sessionID: uuid.New().String()[:8],
 		notifCh:   make(chan Notification, 64),
 		stopCh:    make(chan struct{}),
 	}
+	c.intensity.Store(5)
+	return c
 }
 
 // SetContext stores the Wails context for event emission.
@@ -76,12 +79,12 @@ func (c *Coordinator) SetIntensity(level int) {
 	if level > 10 {
 		level = 10
 	}
-	c.intensity = level
+	c.intensity.Store(int32(level))
 }
 
 // GetIntensity returns current intensity level.
 func (c *Coordinator) GetIntensity() int {
-	return c.intensity
+	return int(c.intensity.Load())
 }
 
 // GetSessionHistory returns all recorded session events.
@@ -140,11 +143,11 @@ func (c *Coordinator) recordEvent(tp, agent, content, action string) {
 
 // OnParagraphWritten runs agents asynchronously and pushes results.
 func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
-	if c.intensity == 0 || paragraphText == "" {
+	if c.intensity.Load() == 0 || paragraphText == "" {
 		return
 	}
 
-	threshold := float64(c.intensity) / 10.0 // 0.0 - 1.0
+	threshold := float64(c.intensity.Load()) / 10.0
 
 	// Fire all checks concurrently
 	var wg sync.WaitGroup
@@ -172,7 +175,7 @@ func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
 }
 
 func (c *Coordinator) checkStyleDeviation(ctx context.Context, text string, threshold float64) {
-	if c.intensity < 8 {
+	if c.intensity.Load() < 8 {
 		return
 	}
 	profiles, _ := c.agents.Style.ListProfiles(ctx)
@@ -189,7 +192,7 @@ func (c *Coordinator) checkStyleDeviation(ctx context.Context, text string, thre
 }
 
 func (c *Coordinator) detectForeshadow(ctx context.Context, chapterID, text string, threshold float64) {
-	if c.intensity < 4 {
+	if c.intensity.Load() < 4 {
 		return
 	}
 	candidates, err := c.agents.Foreshadow.AutoDetectForeshadowing(ctx, text)
@@ -212,6 +215,14 @@ func (c *Coordinator) detectForeshadow(ctx context.Context, chapterID, text stri
 }
 
 // RecordUserAction logs whether the user accepted or dismissed a suggestion.
+func (c *Coordinator) tryNotify(n Notification) {
+	select {
+	case c.notifCh <- n:
+	default:
+		log.Printf("coordinator: notification dropped (channel full)")
+	}
+}
+
 func (c *Coordinator) RecordUserAction(notifID, action string) {
 	c.sessionMu.Lock()
 	defer c.sessionMu.Unlock()

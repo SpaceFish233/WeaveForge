@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // ChatCompletion calls an OpenAI-compatible chat API. Also supports Anthropic
@@ -48,7 +47,7 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []Message, model s
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", c.authHeader())
 
-	httpClient := &http.Client{Timeout: 120 * time.Second}
+	httpClient := c.http
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		return "", fmt.Errorf("llm: request failed: %w", err)
@@ -81,13 +80,11 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []Message, model s
 
 // anthropicChat implements Anthropic's Messages API format.
 func (c *Client) anthropicChat(ctx context.Context, messages []Message, model string, opts ...ChatOption) (string, error) {
-	// Build Anthropic-style messages from OpenAI-format messages
 	type anthropicMsg struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
 	}
 
-	// Extract system message if present
 	systemContent := ""
 	var msgs []anthropicMsg
 	for _, m := range messages {
@@ -102,8 +99,8 @@ func (c *Client) anthropicChat(ctx context.Context, messages []Message, model st
 	}
 
 	req := map[string]interface{}{
-		"model":     model,
-		"messages":  msgs,
+		"model":      model,
+		"messages":   msgs,
 		"max_tokens": 4096,
 	}
 	if systemContent != "" {
@@ -135,7 +132,7 @@ func (c *Client) anthropicChat(ctx context.Context, messages []Message, model st
 	httpReq.Header.Set("x-api-key", c.APIKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	httpClient := &http.Client{Timeout: 120 * time.Second}
+	httpClient := c.http
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		return "", fmt.Errorf("llm: anthropic failed: %w", err)

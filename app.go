@@ -40,7 +40,12 @@ func NewApp(cs *services.ChapterService, vs *services.VolumeService, ca *charact
 	return &App{chapter: cs, volume: vs, characterAgent: ca, settingAgent: sa, styleAgent: sta, foreshadowAgent: fa, plotEngine: pe, coordinator: co, appConfig: cfg, embedder: emb}
 }
 
-func (a *App) startup(ctx context.Context) { a.ctx = ctx }
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	if a.coordinator != nil {
+		a.coordinator.SetContext(ctx)
+	}
+}
 
 // ─── Chapter API ────────────────────────────────────────────────────
 

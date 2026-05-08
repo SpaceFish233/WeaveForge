@@ -103,6 +103,7 @@ func main() {
 		Setting: settingAgent, Style: styleAgent,
 		Foreshadow: foreshadowAgent,
 	})
+	coord.Start()
 	app := NewApp(chapterService, volumeService, characterAgent, settingAgent, styleAgent, foreshadowAgent, plotEngine, coord, appConfig, embedder)
 
 	if err := wails.Run(&options.App{

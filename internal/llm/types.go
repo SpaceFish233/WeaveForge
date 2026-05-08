@@ -1,6 +1,10 @@
 package llm
 
-import "fmt"
+import (
+	"fmt"
+	"net/http"
+	"time"
+)
 
 // Message represents a chat message in OpenAI-compatible API format.
 type Message struct {
@@ -14,19 +18,19 @@ type ChatOption struct {
 	MaxTokens   int
 }
 
-// Client holds connection config for LLM API calls.
 type Client struct {
 	APIKey  string
 	BaseURL string
+	http    *http.Client
 }
 
-// NewClient creates a new LLM client.
+// NewClient creates a new LLM client with shared HTTP client for connection reuse.
 // baseURL defaults to "https://api.deepseek.com/v1".
 func NewClient(baseURL, apiKey string) *Client {
 	if baseURL == "" {
 		baseURL = "https://api.deepseek.com/v1"
 	}
-	return &Client{APIKey: apiKey, BaseURL: baseURL}
+	return &Client{APIKey: apiKey, BaseURL: baseURL, http: &http.Client{Timeout: 120 * time.Second}}
 }
 
 func (c *Client) authHeader() string {

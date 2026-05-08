@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // GetEmbedding calls an OpenAI-compatible embeddings API and returns the vector.
@@ -35,8 +34,7 @@ func (c *Client) GetEmbedding(ctx context.Context, text string, model string) ([
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", c.authHeader())
 
-	httpClient := &http.Client{Timeout: 60 * time.Second}
-	resp, err := httpClient.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("llm: embed request failed: %w", err)
 	}
