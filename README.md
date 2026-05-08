@@ -40,16 +40,6 @@
 
 ## 快速开始
 
-### 方式一：使用预编译安装包
-
-从 Release 页面下载对应平台的最新版本：
-
-- **Windows**: `WeaveForge_Setup.exe`（安装包）或 `weaveforge.exe`（便携版）
-- **macOS**: `WeaveForge.dmg`
-- **Linux**: `weaveforge.AppImage`
-
-### 方式二：从源码编译
-
 ```bash
 # 前置条件
 # - Go 1.22+
