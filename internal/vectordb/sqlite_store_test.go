@@ -34,7 +34,7 @@ func inMemoryDB(t *testing.T) *gorm.DB {
 
 func TestSQLiteStore_AddAndSearch(t *testing.T) {
 	db := inMemoryDB(t)
-	store, err := NewSQLiteStore(db, &mockEmbedder{}, 4)
+	store, err := NewSQLiteStore(db, &mockEmbedder{})
 	if err != nil {
 		t.Fatalf("create store: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestSQLiteStore_AddAndSearch(t *testing.T) {
 
 func TestSQLiteStore_Search_Empty(t *testing.T) {
 	db := inMemoryDB(t)
-	store, err := NewSQLiteStore(db, &mockEmbedder{}, 4)
+	store, err := NewSQLiteStore(db, &mockEmbedder{})
 	if err != nil {
 		t.Fatalf("create store: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestSQLiteStore_Search_Empty(t *testing.T) {
 
 func TestSQLiteStore_DeleteDocument(t *testing.T) {
 	db := inMemoryDB(t)
-	store, err := NewSQLiteStore(db, &mockEmbedder{}, 4)
+	store, err := NewSQLiteStore(db, &mockEmbedder{})
 	if err != nil {
 		t.Fatalf("create store: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestSQLiteStore_DeleteDocument(t *testing.T) {
 
 func TestSQLiteStore_DeleteDocumentsByMetadata(t *testing.T) {
 	db := inMemoryDB(t)
-	store, _ := NewSQLiteStore(db, &mockEmbedder{}, 4)
+	store, _ := NewSQLiteStore(db, &mockEmbedder{})
 	ctx := context.Background()
 	store.AddDocuments(ctx, []Document{
 		{ID: "1", Content: "a", Embedding: []float32{1, 0, 0, 0}, Metadata: `{"type":"世界观"}`},

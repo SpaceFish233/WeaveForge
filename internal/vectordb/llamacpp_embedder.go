@@ -35,23 +35,19 @@ type LlamaCppEmbedder struct {
 // NewLlamaCppEmbedder connects to or starts a local llama.cpp server.
 // If serverPath is empty, tries to detect llama-server in PATH.
 // If modelPath is empty, only connects to an already running server.
-func NewLlamaCppEmbedder(serverPath, modelPath string, port, dimension int) *LlamaCppEmbedder {
+// The output dimension is auto-detected from the model on the first Embed() call.
+func NewLlamaCppEmbedder(serverPath, modelPath string, port int) *LlamaCppEmbedder {
 	if port <= 0 {
 		port = 18635
 	}
-	if dimension <= 0 {
-		dimension = 512
-	}
 
-	e := &LlamaCppEmbedder{
+	return &LlamaCppEmbedder{
 		serverPath: serverPath,
 		modelPath:  modelPath,
 		port:       port,
 		baseURL:    fmt.Sprintf("http://127.0.0.1:%d", port),
 		client:     &http.Client{Timeout: 60 * time.Second},
-		dimension:  dimension,
 	}
-	return e
 }
 
 // Start launches the llama-server process if configured and not already running.
@@ -95,25 +91,24 @@ func (e *LlamaCppEmbedder) Start() error {
 		"--host", "127.0.0.1",
 		"--port", fmt.Sprintf("%d", e.port),
 		"--embeddings",
-		"-c", "2048",            // context size
-		"--rope-scaling", "1.0", // default
-		"--no-mmap",
+		"-c", "2048", // context size
 	}
 	cmd := exec.Command(serverPath, args...)
+	hideConsoleWindow(cmd)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start llama-server: %w", err)
 	}
 	e.cmd = cmd
 
-	// Wait for server to be ready (up to 30s)
-	for i := 0; i < 60; i++ {
+	// Wait for server to be ready (up to 120s, large models need time)
+	for i := 0; i < 240; i++ {
 		if e.isRunning() {
 			return nil
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	return fmt.Errorf("llama-server did not start within 30s")
+	return fmt.Errorf("llama-server did not start within 120s")
 }
 
 func (e *LlamaCppEmbedder) isRunning() bool {

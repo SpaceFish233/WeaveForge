@@ -54,7 +54,7 @@ export namespace config {
 	    }
 	}
 	export class VectorDBConfig {
-	    dimension: number;
+	
 	
 	    static createFrom(source: any = {}) {
 	        return new VectorDBConfig(source);
@@ -62,7 +62,7 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.dimension = source["dimension"];
+	
 	    }
 	}
 	export class LLMConfig {
@@ -85,7 +85,8 @@ export namespace config {
 	}
 	export class Config {
 	    llm: LLMConfig;
-	    vector_db: VectorDBConfig;
+	    // Go type: VectorDBConfig
+	    vector_db: any;
 	    embedding: EmbeddingConfig;
 	
 	    static createFrom(source: any = {}) {
@@ -95,7 +96,7 @@ export namespace config {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.llm = this.convertValues(source["llm"], LLMConfig);
-	        this.vector_db = this.convertValues(source["vector_db"], VectorDBConfig);
+	        this.vector_db = this.convertValues(source["vector_db"], null);
 	        this.embedding = this.convertValues(source["embedding"], EmbeddingConfig);
 	    }
 	
@@ -117,7 +118,6 @@ export namespace config {
 		    return a;
 		}
 	}
-	
 	
 
 }
@@ -299,51 +299,6 @@ export namespace foreshadow {
 		    }
 		    return a;
 		}
-	}
-
-}
-
-export namespace inspiration {
-	
-	export class InspirationMatch {
-	    id: string;
-	    content: string;
-	    tags: string[];
-	    score: number;
-	    match_type: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new InspirationMatch(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.content = source["content"];
-	        this.tags = source["tags"];
-	        this.score = source["score"];
-	        this.match_type = source["match_type"];
-	    }
-	}
-	export class InspirationSummary {
-	    id: string;
-	    content: string;
-	    tags: string[];
-	    source: string;
-	    created_at: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new InspirationSummary(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.content = source["content"];
-	        this.tags = source["tags"];
-	        this.source = source["source"];
-	        this.created_at = source["created_at"];
-	    }
 	}
 
 }
@@ -804,22 +759,46 @@ export namespace plotengine {
 
 export namespace setting {
 	
-	export class ConflictWarning {
+	export class ConflictResult {
+	    setting_title: string;
+	    has_conflict: boolean;
 	    conflict_desc: string;
 	    suggested_fix: string;
 	    reference_text: string;
-	    setting_title: string;
+	    snippets: string[];
+	    truncated_from: number;
 	
 	    static createFrom(source: any = {}) {
-	        return new ConflictWarning(source);
+	        return new ConflictResult(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.setting_title = source["setting_title"];
+	        this.has_conflict = source["has_conflict"];
 	        this.conflict_desc = source["conflict_desc"];
 	        this.suggested_fix = source["suggested_fix"];
 	        this.reference_text = source["reference_text"];
-	        this.setting_title = source["setting_title"];
+	        this.snippets = source["snippets"];
+	        this.truncated_from = source["truncated_from"];
+	    }
+	}
+	export class SettingHit {
+	    id: string;
+	    title: string;
+	    occurrences: number;
+	    first_snippet: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SettingHit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.occurrences = source["occurrences"];
+	        this.first_snippet = source["first_snippet"];
 	    }
 	}
 	export class SettingInfo {

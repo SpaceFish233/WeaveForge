@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { ref, onMounted } from 'vue'
-import { GetConfig, UpdateConfig, TestLLMConnection } from '../../wailsjs/go/main/App'
+import { GetConfig, UpdateConfig, TestLLMConnection, TestEmbeddingLocal, SelectExeFile, SelectGGUFFile, GetEmbedderEngine } from '../../wailsjs/go/main/App'
 import { config } from '../../wailsjs/go/models'
 
 type AppConfig = config.Config
@@ -8,9 +8,15 @@ type AppConfig = config.Config
 const apiConfig = ref<AppConfig | null>(null)
 const apiSaved = ref(false)
 const testLLMStatus = ref<'idle'|'testing'|'ok'|'fail'>('idle')
+const testEmbedStatus = ref<'idle'|'testing'|'ok'|'fail'>('idle')
+const testEmbedResult = ref('')
+const activeEngine = ref('')
 
 async function loadConfig() {
-  try { apiConfig.value = await GetConfig() } catch (e) { console.error(e) }
+  try {
+    apiConfig.value = await GetConfig()
+    activeEngine.value = await GetEmbedderEngine()
+  } catch (e) { console.error(e) }
 }
 
 async function handleTestLLM() {
@@ -29,7 +35,6 @@ async function handleSave() {
     await UpdateConfig(new config.Config({
       llm: new config.LLMConfig(apiConfig.value.llm),
       embedding: new config.EmbeddingConfig(apiConfig.value.embedding),
-      vector_db: new config.VectorDBConfig(apiConfig.value.vector_db),
     }))
     apiSaved.value = true
     setTimeout(() => { apiSaved.value = false }, 2000)
@@ -41,6 +46,38 @@ function presetLLMProvider(p: string) {
   const c = apiConfig.value.llm
   if (p === 'openai') { c.base_url = 'https://api.deepseek.com/v1'; c.chat_model = 'deepseek-chat' }
   else if (p === 'anthropic') { c.base_url = 'https://api.anthropic.com/v1'; c.chat_model = 'claude-sonnet-4-20250514' }
+}
+
+async function handleSelectExe() {
+  try {
+    const path = await SelectExeFile()
+    if (path && apiConfig.value) {
+      apiConfig.value.embedding.server_path = path
+    }
+  } catch (e) { console.error(e) }
+}
+
+async function handleSelectGGUF() {
+  try {
+    const path = await SelectGGUFFile()
+    if (path && apiConfig.value) {
+      apiConfig.value.embedding.model_path = path
+    }
+  } catch (e) { console.error(e) }
+}
+
+async function handleTestEmbedding() {
+  testEmbedStatus.value = 'testing'
+  testEmbedResult.value = ''
+  try {
+    const result = await TestEmbeddingLocal()
+    testEmbedStatus.value = 'ok'
+    testEmbedResult.value = result
+  } catch (e: any) {
+    testEmbedStatus.value = 'fail'
+    testEmbedResult.value = e?.message || String(e)
+  }
+  setTimeout(() => { if (testEmbedStatus.value !== 'testing') testEmbedStatus.value = 'idle' }, 5000)
 }
 
 onMounted(loadConfig)
@@ -96,16 +133,26 @@ onMounted(loadConfig)
             {{ p === 'hash' ? '哈希向量（内置）' : 'llama.cpp + GGUF' }}
           </button>
         </div>
+        <p v-if="activeEngine" class="engine-status">
+          当前运行: <span :class="{ warn: apiConfig.embedding.engine === 'llamacpp' && activeEngine !== 'llamacpp' }">{{ activeEngine === 'llamacpp' ? 'llama.cpp + GGUF' : '哈希向量（内置）' }}</span>
+          <span v-if="apiConfig.embedding.engine === 'llamacpp' && activeEngine !== 'llamacpp'" class="warn-hint">（llama-server 未启动或启动失败，已回退到哈希引擎）</span>
+        </p>
       </div>
 
       <template v-if="apiConfig.embedding.engine === 'llamacpp'">
       <div class="form-field">
         <label>llama-server 路径</label>
-        <input v-model="apiConfig.embedding.server_path" placeholder="留空自动在 PATH 查找" />
+        <div class="path-row">
+          <input v-model="apiConfig.embedding.server_path" placeholder="留空自动在 PATH 查找" />
+          <button class="btn-browse" @click="handleSelectExe">浏览...</button>
+        </div>
       </div>
       <div class="form-field">
         <label>GGUF 模型路径</label>
-        <input v-model="apiConfig.embedding.model_path" placeholder="bge-small-zh-q5_k_m.gguf" />
+        <div class="path-row">
+          <input v-model="apiConfig.embedding.model_path" placeholder="bge-small-zh-q5_k_m.gguf" />
+          <button class="btn-browse" @click="handleSelectGGUF">浏览...</button>
+        </div>
       </div>
       <div class="form-field">
         <label>服务端口</label>
@@ -126,8 +173,13 @@ onMounted(loadConfig)
       </template>
 
       <div class="form-field">
-        <label>向量维度</label>
-        <input v-model.number="apiConfig.vector_db.dimension" type="number" placeholder="512" />
+        <label>Embedding 测试</label>
+        <div class="test-row">
+          <button class="btn-test" :class="testEmbedStatus" @click="handleTestEmbedding" :disabled="testEmbedStatus==='testing'">
+            {{ testEmbedStatus === 'testing' ? '测试中' : testEmbedStatus === 'ok' ? '✓ 正常' : testEmbedStatus === 'fail' ? '✗ 失败' : '测试 Embedding' }}
+          </button>
+          <span v-if="testEmbedResult" class="test-result" :class="testEmbedStatus">{{ testEmbedResult }}</span>
+        </div>
       </div>
 
       <div class="form-actions">
@@ -155,15 +207,27 @@ h3 { font-size: 16px; font-weight: 600; color: #f0f6fc; margin: 0 0 4px; }
 .provider-btn.active { background: #1f6feb; color: #fff; border-color: #1f6feb; }
 .key-row { display: flex; gap: 8px; }
 .key-row input { flex: 1; }
+.path-row { display: flex; gap: 8px; }
+.path-row input { flex: 1; }
+.btn-browse { flex-shrink: 0; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600; font-family: inherit; border: 1px solid #30363d; background: #21262d; color: #c9d1d9; white-space: nowrap; }
+.btn-browse:hover { background: #30363d; }
 .btn-test { flex-shrink: 0; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600; font-family: inherit; border: 1px solid #30363d; background: #21262d; color: #c9d1d9; white-space: nowrap; }
 .btn-test:hover:not(:disabled) { background: #30363d; }
 .btn-test:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-test.ok { background: rgba(63,185,80,0.15); border-color: #3fb950; color: #3fb950; }
 .btn-test.fail { background: rgba(248,81,73,0.15); border-color: #f85149; color: #f85149; }
+.test-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.test-result { font-size: 12px; font-family: monospace; white-space: pre-wrap; word-break: break-all; }
+.test-result.ok { color: #3fb950; }
+.test-result.fail { color: #f85149; }
 .form-actions { display: flex; gap: 8px; align-items: center; margin-top: 24px; }
 .btn-primary { padding: 8px 16px; background: #238636; color: #fff; border: 1px solid rgba(240,246,252,0.1); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
 .btn-primary:hover { background: #2ea043; }
 .saved { font-size: 13px; color: #3fb950; font-weight: 600; }
+.engine-status { font-size: 11px; color: #8b949e; margin: 6px 0 0; }
+.engine-status span { font-weight: 600; color: #c9d1d9; }
+.engine-status span.warn { color: #d29922; }
+.warn-hint { font-size: 11px; color: #d29922; margin-left: 4px; }
 .loading { display: flex; align-items: center; justify-content: center; height: 100%; color: #484f58; }
 .note-box { padding: 14px; background: #1c2128; border: 1px solid #30363d; border-radius: 8px; margin-bottom: 20px; }
 .note-box p { margin: 0 0 8px; font-size: 12px; color: #8b949e; line-height: 1.5; }

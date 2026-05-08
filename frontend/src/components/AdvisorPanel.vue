@@ -5,7 +5,6 @@ import {
 } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 import ConsistencyCheck from './ConsistencyCheck.vue'
-import InspirationPanel from './InspirationPanel.vue'
 import StylePanel from './StylePanel.vue'
 
 interface Notification {
@@ -17,7 +16,6 @@ const props = defineProps<{ chapterContent: string; chapterID: string | null }>(
 const emit = defineEmits<{ (e: 'insert', text: string): void }>()
 
 const intensity = ref(5)
-const expandedSection = ref<string | null>(null)
 
 async function setIntensity(v: number) {
   intensity.value = v
@@ -50,7 +48,6 @@ const agentMeta: Record<string, { icon: string; label: string }> = {
   consistency: { icon: '⚡', label: '设定校验' },
   style: { icon: '✒', label: '风格分析' },
   foreshadow: { icon: '🔮', label: '伏笔检测' },
-  inspiration: { icon: '💡', label: '灵感匹配' },
 }
 function agentMetaFor(a: string) { return agentMeta[a] || { icon: '📋', label: a } }
 
@@ -74,10 +71,6 @@ onMounted(async () => {
   lastLen = props.chapterContent.length
 })
 onBeforeUnmount(() => { EventsOff('coordinator:notification'); if (writeTimer) clearTimeout(writeTimer) })
-
-function toggleSection(name: string) {
-  expandedSection.value = expandedSection.value === name ? null : name
-}
 </script>
 
 <template>
@@ -87,6 +80,21 @@ function toggleSection(name: string) {
       <div class="intensity-control">
         <input type="range" min="0" max="10" :value="intensity" @input="setIntensity(Number(($event.target as HTMLInputElement).value))" />
         <span class="intensity-label">{{ intensity === 0 ? '关' : intensity }}</span>
+      </div>
+    </div>
+
+    <div class="tool-panels">
+      <div class="tool-section">
+        <div class="tool-header">✒ 风格润色</div>
+        <div class="tool-body">
+          <StylePanel :chapterContent="chapterContent" />
+        </div>
+      </div>
+      <div class="tool-section">
+        <div class="tool-header">⚡ 设定校验</div>
+        <div class="tool-body">
+          <ConsistencyCheck :chapterContent="chapterContent" />
+        </div>
       </div>
     </div>
 
@@ -111,28 +119,6 @@ function toggleSection(name: string) {
         <p>写作时智能助手会<br />自动提供建议</p>
       </div>
     </div>
-
-    <!-- Agent panels (accordion, no native <details> to avoid reflow jitter) -->
-    <div class="agent-panels">
-      <div class="acc-section">
-        <div class="acc-header" @click="toggleSection('inspiration')">💡 灵感匹配</div>
-        <div v-show="expandedSection === 'inspiration'" class="acc-body">
-          <InspirationPanel :chapterContent="chapterContent" :chapterID="chapterID" @insert="(t:string) => emit('insert',t)" />
-        </div>
-      </div>
-      <div class="acc-section">
-        <div class="acc-header" @click="toggleSection('style')">✒ 风格润色</div>
-        <div v-show="expandedSection === 'style'" class="acc-body">
-          <StylePanel :chapterContent="chapterContent" />
-        </div>
-      </div>
-      <div class="acc-section">
-        <div class="acc-header" @click="toggleSection('consistency')">⚡ 设定校验</div>
-        <div v-show="expandedSection === 'consistency'" class="acc-body">
-          <ConsistencyCheck :chapterContent="chapterContent" />
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -143,6 +129,18 @@ function toggleSection(name: string) {
 .intensity-control { display: flex; align-items: center; gap: 6px; }
 .intensity-control input[type="range"] { width: 70px; height: 4px; accent-color: #58a6ff; cursor: pointer; }
 .intensity-label { font-size: 10px; color: #8b949e; min-width: 16px; text-align: center; }
+
+/* Tool panels (fixed below header) */
+.tool-panels { flex-shrink: 0; border-bottom: 1px solid #21262d; }
+.tool-section { border-bottom: 1px solid #21262d; }
+.tool-section:last-child { border-bottom: none; }
+.tool-header {
+  padding: 8px 16px; font-size: 11px; font-weight: 600; color: #8b949e;
+  background: #161b22; border-bottom: 1px solid #1c2128;
+}
+.tool-body { background: #0d1117; }
+
+/* Notification stream */
 .notif-stream { flex: 1; overflow-y: auto; padding: 8px; min-height: 100px; }
 .notif-card { padding: 10px; margin-bottom: 6px; border: 1px solid #21262d; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
 .notif-card:hover { background: #1c2128; }
@@ -150,7 +148,6 @@ function toggleSection(name: string) {
 .notif-card.consistency { border-left: 3px solid #d29922; }
 .notif-card.style { border-left: 3px solid #58a6ff; }
 .notif-card.foreshadow { border-left: 3px solid #bc8cff; }
-.notif-card.inspiration { border-left: 3px solid #3fb950; }
 .notif-card.warning { border-left-color: #f85149 !important; }
 .notif-card.success { border-left-color: #3fb950 !important; }
 .notif-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
@@ -172,15 +169,4 @@ function toggleSection(name: string) {
 .action-btn.dismiss:hover { background: #30363d; }
 .empty-state { text-align: center; padding: 20px 16px; color: #484f58; }
 .empty-state p { font-size: 12px; line-height: 1.5; }
-
-/* Agent accordion panels */
-.agent-panels { border-top: 1px solid #21262d; flex: 0 0 auto; overflow-y: auto; max-height: 50%; }
-.acc-section { border-bottom: 1px solid #21262d; }
-.acc-header {
-  padding: 8px 16px; font-size: 11px; color: #8b949e;
-  cursor: pointer; user-select: none;
-  position: sticky; top: 0; background: #161b22; z-index: 1;
-}
-.acc-header:hover { color: #c9d1d9; background: #1c2128; }
-.acc-body { background: #0d1117; min-height: 60px; }
 </style>

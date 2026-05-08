@@ -14,16 +14,8 @@ export function AutoDetectForeshadowing(arg1) {
   return window['go']['main']['App']['AutoDetectForeshadowing'](arg1);
 }
 
-export function CheckConsistency(arg1) {
-  return window['go']['main']['App']['CheckConsistency'](arg1);
-}
-
 export function ConfirmForeshadowing(arg1, arg2) {
   return window['go']['main']['App']['ConfirmForeshadowing'](arg1, arg2);
-}
-
-export function ContextPush(arg1, arg2) {
-  return window['go']['main']['App']['ContextPush'](arg1, arg2);
 }
 
 export function CreateChapter(arg1, arg2, arg3) {
@@ -50,10 +42,6 @@ export function DeleteForeshadowing(arg1) {
   return window['go']['main']['App']['DeleteForeshadowing'](arg1);
 }
 
-export function DeleteInspiration(arg1) {
-  return window['go']['main']['App']['DeleteInspiration'](arg1);
-}
-
 export function DeleteSetting(arg1) {
   return window['go']['main']['App']['DeleteSetting'](arg1);
 }
@@ -64,6 +52,10 @@ export function DeleteStyleProfile(arg1) {
 
 export function DeleteVolume(arg1) {
   return window['go']['main']['App']['DeleteVolume'](arg1);
+}
+
+export function DetectSettings(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DetectSettings'](arg1, arg2, arg3);
 }
 
 export function GenerateBranches(arg1) {
@@ -92,6 +84,10 @@ export function GetCharacter(arg1) {
 
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
+}
+
+export function GetEmbedderEngine() {
+  return window['go']['main']['App']['GetEmbedderEngine']();
 }
 
 export function GetForeshadowing(arg1) {
@@ -134,10 +130,6 @@ export function ListForeshadowings(arg1) {
   return window['go']['main']['App']['ListForeshadowings'](arg1);
 }
 
-export function ListInspirations(arg1) {
-  return window['go']['main']['App']['ListInspirations'](arg1);
-}
-
 export function ListSettings() {
   return window['go']['main']['App']['ListSettings']();
 }
@@ -148,10 +140,6 @@ export function ListStyleProfiles() {
 
 export function ListVolumes() {
   return window['go']['main']['App']['ListVolumes']();
-}
-
-export function MarkAsDeprecated(arg1, arg2) {
-  return window['go']['main']['App']['MarkAsDeprecated'](arg1, arg2);
 }
 
 export function MergeBranches(arg1) {
@@ -182,8 +170,12 @@ export function SaveForeshadowing(arg1, arg2) {
   return window['go']['main']['App']['SaveForeshadowing'](arg1, arg2);
 }
 
-export function SaveInspiration(arg1, arg2) {
-  return window['go']['main']['App']['SaveInspiration'](arg1, arg2);
+export function SelectExeFile() {
+  return window['go']['main']['App']['SelectExeFile']();
+}
+
+export function SelectGGUFFile() {
+  return window['go']['main']['App']['SelectGGUFFile']();
 }
 
 export function SetAssistantIntensity(arg1) {
@@ -196,6 +188,10 @@ export function SuggestReveal(arg1) {
 
 export function TestEmbeddingConnection(arg1, arg2) {
   return window['go']['main']['App']['TestEmbeddingConnection'](arg1, arg2);
+}
+
+export function TestEmbeddingLocal() {
+  return window['go']['main']['App']['TestEmbeddingLocal']();
 }
 
 export function TestLLMConnection(arg1, arg2) {
@@ -236,4 +232,8 @@ export function UpdateVolume(arg1, arg2) {
 
 export function UploadWorldSetting(arg1, arg2, arg3) {
   return window['go']['main']['App']['UploadWorldSetting'](arg1, arg2, arg3);
+}
+
+export function ValidateSetting(arg1, arg2) {
+  return window['go']['main']['App']['ValidateSetting'](arg1, arg2);
 }

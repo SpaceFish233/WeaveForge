@@ -2,19 +2,24 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"strings"
+
 	"weaveforge/internal/agent/character"
 	"weaveforge/internal/agent/foreshadow"
-	"weaveforge/internal/agent/inspiration"
 	"weaveforge/internal/agent/plotengine"
 	"weaveforge/internal/agent/setting"
 	"weaveforge/internal/agent/style"
 	"weaveforge/internal/config"
 	"weaveforge/internal/coordinator"
 	"weaveforge/internal/llm"
+	"weaveforge/internal/vectordb"
 	"weaveforge/models"
 	"weaveforge/parser"
 	"weaveforge/services"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -24,15 +29,15 @@ type App struct {
 	characterAgent   *character.Agent
 	settingAgent     *setting.Agent
 	styleAgent       *style.Agent
-	inspirationAgent *inspiration.Agent
 	foreshadowAgent  *foreshadow.Agent
 	plotEngine       *plotengine.Agent
 	coordinator      *coordinator.Coordinator
 	appConfig        *config.Config
+	embedder         vectordb.Embedder
 }
 
-func NewApp(cs *services.ChapterService, vs *services.VolumeService, ca *character.Agent, sa *setting.Agent, sta *style.Agent, ia *inspiration.Agent, fa *foreshadow.Agent, pe *plotengine.Agent, co *coordinator.Coordinator, cfg *config.Config) *App {
-	return &App{chapter: cs, volume: vs, characterAgent: ca, settingAgent: sa, styleAgent: sta, inspirationAgent: ia, foreshadowAgent: fa, plotEngine: pe, coordinator: co, appConfig: cfg}
+func NewApp(cs *services.ChapterService, vs *services.VolumeService, ca *character.Agent, sa *setting.Agent, sta *style.Agent, fa *foreshadow.Agent, pe *plotengine.Agent, co *coordinator.Coordinator, cfg *config.Config, emb vectordb.Embedder) *App {
+	return &App{chapter: cs, volume: vs, characterAgent: ca, settingAgent: sa, styleAgent: sta, foreshadowAgent: fa, plotEngine: pe, coordinator: co, appConfig: cfg, embedder: emb}
 }
 
 func (a *App) startup(ctx context.Context) { a.ctx = ctx }
@@ -74,7 +79,8 @@ func (a *App) ListSettings() ([]setting.SettingInfo, error)                { ret
 func (a *App) GetSetting(id string) (*models.WorldSetting, error)         { return a.settingAgent.GetSetting(a.ctx, id) }
 func (a *App) UpdateSetting(id, title, content, settingType string) error  { return a.settingAgent.UpdateSetting(a.ctx, id, title, content, settingType) }
 func (a *App) DeleteSetting(id string) error                               { return a.settingAgent.DeleteSetting(a.ctx, id) }
-func (a *App) CheckConsistency(chapterContent string) ([]setting.ConflictWarning, error) { return a.settingAgent.CheckConsistency(a.ctx, chapterContent) }
+func (a *App) DetectSettings(chapterContent string, caseSensitive, wholeWord bool) ([]setting.SettingHit, error) { return a.settingAgent.DetectSettingsInChapter(chapterContent, caseSensitive, wholeWord) }
+func (a *App) ValidateSetting(settingID, chapterContent string) (*setting.ConflictResult, error) { return a.settingAgent.ValidateSettingConflict(settingID, chapterContent) }
 
 // ─── Style Agent API ────────────────────────────────────────────────
 
@@ -85,18 +91,10 @@ func (a *App) DeleteStyleProfile(id string) error                               
 func (a *App) PolishText(text, profileID, intensity string) (string, error)       { return a.styleAgent.PolishText(a.ctx, text, profileID, intensity) }
 func (a *App) AnalyzeStyle(text, profileID string) (string, error)                { return a.styleAgent.AnalyzeStyle(a.ctx, text, profileID) }
 
-// ─── Inspiration Agent API ──────────────────────────────────────────
-
-func (a *App) SaveInspiration(content string, tags []string) error                          { return a.inspirationAgent.SaveInspiration(a.ctx, content, tags) }
-func (a *App) ListInspirations(filterTags []string) ([]inspiration.InspirationSummary, error) { return a.inspirationAgent.ListInspirations(a.ctx, filterTags) }
-func (a *App) DeleteInspiration(id string) error                                              { return a.inspirationAgent.DeleteInspiration(a.ctx, id) }
-func (a *App) ContextPush(sceneType string, keywords []string) ([]inspiration.InspirationMatch, error) { return a.inspirationAgent.ContextPush(a.ctx, sceneType, keywords) }
-func (a *App) MarkAsDeprecated(chapterID string, segmentContent string) ([]string, error)   { return a.inspirationAgent.MarkAsDeprecated(a.ctx, chapterID, segmentContent) }
-
 // ─── Foreshadow Agent API ───────────────────────────────────────────
 
 func (a *App) AutoDetectForeshadowing(chapterContent string) ([]foreshadow.CandidateForeshadow, error) { return a.foreshadowAgent.AutoDetectForeshadowing(a.ctx, chapterContent) }
-func (a *App) ConfirmForeshadowing(candidate foreshadow.CandidateForeshadow, chapterID string) (string, error) { id, err := a.foreshadowAgent.ConfirmForeshadowing(a.ctx, candidate, chapterID); if err == nil { go a.settingAgent.CheckConsistency(context.Background(), candidate.Text) }; return id, err }
+func (a *App) ConfirmForeshadowing(candidate foreshadow.CandidateForeshadow, chapterID string) (string, error) { return a.foreshadowAgent.ConfirmForeshadowing(a.ctx, candidate, chapterID) }
 func (a *App) SaveForeshadowing(text string, chapterID string) (string, error) { return a.foreshadowAgent.SaveForeshadowing(a.ctx, text, chapterID) }
 func (a *App) ListForeshadowings(statusFilter string) ([]foreshadow.ForeshadowSummary, error) { return a.foreshadowAgent.ListForeshadowings(a.ctx, statusFilter) }
 func (a *App) GetForeshadowing(id string) (*models.Foreshadowing, error) { return a.foreshadowAgent.GetForeshadowing(a.ctx, id) }
@@ -125,6 +123,85 @@ func (a *App) TestLLMConnection(baseURL string, apiKey string) error {
 }
 func (a *App) TestEmbeddingConnection(baseURL string, apiKey string) error { client := llm.NewClient(baseURL, apiKey); _, err := client.GetEmbedding(a.ctx, "test", "text-embedding-3-small"); return err }
 
+func (a *App) TestEmbeddingLocal() (string, error) {
+	// Semantic similarity test: two similar sentences vs one unrelated sentence.
+	// A working embedding model should produce much higher cosine similarity for the similar pair.
+	vecA, err := a.embedder.Embed(a.ctx, "今天天气真好，阳光明媚")
+	if err != nil {
+		return "", err
+	}
+	vecB, err := a.embedder.Embed(a.ctx, "晴朗的天空万里无云")
+	if err != nil {
+		return "", err
+	}
+	vecC, err := a.embedder.Embed(a.ctx, "计算机编程语言Python")
+	if err != nil {
+		return "", err
+	}
+
+	engine := a.getEmbedderEngine()
+	simAB := cosineSimilarity(vecA, vecB)
+	simAC := cosineSimilarity(vecA, vecC)
+	gap := simAB - simAC
+
+	var verdict string
+	if gap > 0.3 {
+		verdict = "✓ 区分度良好，模型工作正常"
+	} else if gap > 0.1 {
+		verdict = "△ 区分度较弱（hash 引擎正常表现，或模型质量有限）"
+	} else if gap > 0 {
+		verdict = "△ 区分度极弱，语义嵌入效果有限"
+	} else {
+		verdict = "✗ 异常：相近句相似度不高于无关句，模型可能未正确加载"
+	}
+
+	preview := formatVectorPreview(vecA)
+	return fmt.Sprintf("引擎: %s, 输出维度: %d\n相似度: 相近句=%.4f, 无关句=%.4f, 区分度=%.4f\n%s\n前几个值: %s",
+		engine, len(vecA), simAB, simAC, gap, verdict, preview), nil
+}
+
+func cosineSimilarity(a, b []float32) float64 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0
+	}
+	var dot, normA, normB float64
+	for i := range a {
+		dot += float64(a[i]) * float64(b[i])
+		normA += float64(a[i]) * float64(a[i])
+		normB += float64(b[i]) * float64(b[i])
+	}
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
+}
+
+func formatVectorPreview(vec []float32) string {
+	n := len(vec)
+	if n > 3 {
+		n = 3
+	}
+	if n == 0 {
+		return "[]"
+	}
+	parts := make([]string, n)
+	for i := 0; i < n; i++ {
+		parts[i] = fmt.Sprintf("%.4f", vec[i])
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func (a *App) getEmbedderEngine() string {
+	if fe, ok := a.embedder.(*vectordb.FallbackEmbedder); ok {
+		return fe.Engine()
+	}
+	return a.appConfig.Embedding.Engine
+}
+
+func (a *App) GetEmbedderEngine() string {
+	return a.getEmbedderEngine()
+}
+
 // ─── Coordinator API ───────────────────────────────────────────────
 
 func (a *App) OnParagraphWritten(chapterID, paragraphText string) { a.coordinator.OnParagraphWritten(chapterID, paragraphText) }
@@ -132,3 +209,27 @@ func (a *App) SetAssistantIntensity(level int) { a.coordinator.SetIntensity(leve
 func (a *App) GetAssistantIntensity() int { return a.coordinator.GetIntensity() }
 func (a *App) GetSessionHistory() []coordinator.SessionEvent { return a.coordinator.GetSessionHistory() }
 func (a *App) RecordNotificationAction(notifID, action string) { a.coordinator.RecordUserAction(notifID, action) }
+
+// ─── File Dialog API ────────────────────────────────────────────────
+
+func (a *App) SelectExeFile() (string, error) {
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择 llama-server 可执行文件",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "可执行文件 (*.exe)", Pattern: "*.exe"},
+			{DisplayName: "所有文件 (*.*)", Pattern: "*.*"},
+		},
+	})
+	return path, err
+}
+
+func (a *App) SelectGGUFFile() (string, error) {
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择 GGUF 模型文件",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "GGUF 模型 (*.gguf)", Pattern: "*.gguf"},
+			{DisplayName: "所有文件 (*.*)", Pattern: "*.*"},
+		},
+	})
+	return path, err
+}

@@ -1,15 +1,13 @@
 <script lang="ts" setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref } from 'vue'
 import ChapterTree from '../components/ChapterTree.vue'
 import EditorPanel from '../components/EditorPanel.vue'
 import AdvisorPanel from '../components/AdvisorPanel.vue'
-import InspirationModal from '../components/InspirationModal.vue'
 import { GetChapter, UpdateChapter, SaveForeshadowing } from '../../wailsjs/go/main/App'
 
 const currentChapterId = ref<string | null>(null)
 const currentContent = ref('')
 const saveTimer = ref<number | null>(null)
-const showInspiration = ref(false)
 
 async function handleSelectChapter(id: string) {
   if (saveTimer.value !== null) { clearTimeout(saveTimer.value); saveTimer.value = null }
@@ -48,12 +46,10 @@ async function saveCurrentContent() {
   }
 }
 
-// Global shortcut: Ctrl+Shift+I
-function handleGlobalKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'I') {
-    e.preventDefault()
-    showInspiration.value = true
-  }
+// Insert text from advisor panel suggestions
+function handleInsertText(text: string) {
+  currentContent.value += '\n' + text
+  handleContentUpdate(currentContent.value)
 }
 
 async function handleMarkForeshadow(text: string) {
@@ -63,14 +59,6 @@ async function handleMarkForeshadow(text: string) {
   } catch (e) { console.error('save foreshadow:', e) }
 }
 
-// Insert text from inspiration match
-function handleInsertText(text: string) {
-  currentContent.value += '\n' + text
-  handleContentUpdate(currentContent.value)
-}
-
-onMounted(() => window.addEventListener('keydown', handleGlobalKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown))
 </script>
 
 <template>
@@ -103,11 +91,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
     </aside>
   </div>
 
-  <InspirationModal
-    v-if="showInspiration"
-    @close="showInspiration = false"
-  @saved="() => {}"
-  />
 </template>
 
 <style scoped>

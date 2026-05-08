@@ -5,7 +5,7 @@ import "time"
 // Notification from an agent analysis, pushed to frontend via Wails events.
 type Notification struct {
 	ID        string `json:"id"`
-	Agent     string `json:"agent"`     // consistency / style / foreshadow / inspiration
+	Agent     string `json:"agent"`     // consistency / style / foreshadow
 	Title     string `json:"title"`
 	Content   string `json:"content"`
 	Severity  string `json:"severity"`  // info / warning / success

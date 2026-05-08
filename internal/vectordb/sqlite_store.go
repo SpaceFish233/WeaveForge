@@ -27,19 +27,14 @@ type vectorDoc struct {
 type SQLiteStore struct {
 	db    *gorm.DB
 	embed Embedder
-	dim   int
 	mu    sync.RWMutex
 }
 
-// NewSQLiteStore creates a new SQLiteStore with the given embedder and vector dimension.
-func NewSQLiteStore(db *gorm.DB, embed Embedder, dimension int) (*SQLiteStore, error) {
+func NewSQLiteStore(db *gorm.DB, embed Embedder) (*SQLiteStore, error) {
 	if err := db.AutoMigrate(&vectorDoc{}); err != nil {
 		return nil, fmt.Errorf("vectordb: migrate: %w", err)
 	}
-	if dimension <= 0 {
-		dimension = 512
-	}
-	return &SQLiteStore{db: db, embed: embed, dim: dimension}, nil
+	return &SQLiteStore{db: db, embed: embed}, nil
 }
 
 func floats32ToBytes(vec []float32) []byte {

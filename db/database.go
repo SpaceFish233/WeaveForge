@@ -33,7 +33,7 @@ func Init() error {
 		return err
 	}
 
-	if err := db.AutoMigrate(&models.Volume{}, &models.Chapter{}, &models.WorldSetting{}, &models.StyleProfile{}, &models.Inspiration{}, &models.Foreshadowing{}, &models.Character{}); err != nil {
+	if err := db.AutoMigrate(&models.Volume{}, &models.Chapter{}, &models.WorldSetting{}, &models.StyleProfile{}, &models.Foreshadowing{}, &models.Character{}); err != nil {
 		return err
 	}
 

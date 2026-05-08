@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"weaveforge/internal/agent/foreshadow"
-	"weaveforge/internal/agent/inspiration"
 	"weaveforge/internal/agent/setting"
 	"weaveforge/internal/agent/style"
 
@@ -17,15 +16,14 @@ import (
 
 // AgentHolders groups all agent references for the coordinator.
 type AgentHolders struct {
-	Setting     *setting.Agent
-	Style       *style.Agent
-	Foreshadow  *foreshadow.Agent
-	Inspiration *inspiration.Agent
+	Setting    *setting.Agent
+	Style      *style.Agent
+	Foreshadow *foreshadow.Agent
 }
 
 // Coordinator orchestrates all agents and pushes results to the frontend.
 type Coordinator struct {
-	agents   AgentHolders
+	agents    AgentHolders
 	intensity int // 0-10
 
 	ctx      context.Context
@@ -140,7 +138,7 @@ func (c *Coordinator) recordEvent(tp, agent, content, action string) {
 
 // ─── Agent Orchestration ───────────────────────────────────────────────
 
-// OnParagraphWritten runs all agents asynchronously and pushes results.
+// OnParagraphWritten runs agents asynchronously and pushes results.
 func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
 	if c.intensity == 0 || paragraphText == "" {
 		return
@@ -152,16 +150,7 @@ func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
 	var wg sync.WaitGroup
 	ctx := context.Background()
 
-	// a) Setting consistency
-	if c.agents.Setting != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c.checkConsistency(ctx, chapterID, paragraphText, threshold)
-		}()
-	}
-
-	// b) Style deviation
+	// a) Style deviation
 	if c.agents.Style != nil {
 		wg.Add(1)
 		go func() {
@@ -170,7 +159,7 @@ func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
 		}()
 	}
 
-	// c) Foreshadow detection
+	// b) Foreshadow detection
 	if c.agents.Foreshadow != nil {
 		wg.Add(1)
 		go func() {
@@ -179,43 +168,13 @@ func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
 		}()
 	}
 
-	// d) Inspiration matching
-	if c.agents.Inspiration != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c.matchInspiration(ctx, paragraphText, threshold)
-		}()
-	}
-
 	wg.Wait()
 }
 
-func (c *Coordinator) checkConsistency(ctx context.Context, chapterID, text string, threshold float64) {
-	warnings, err := c.agents.Setting.CheckConsistency(ctx, text)
-	if err != nil || len(warnings) == 0 {
-		return
-	}
-	for _, w := range warnings {
-		title := fmt.Sprintf("设定冲突：%s", w.SettingTitle)
-		c.notifCh <- Notification{
-			ID:       uuid.New().String(),
-			Agent:    "consistency",
-			Title:    title,
-			Content:  w.ConflictDesc,
-			Severity: "warning",
-			Action:   "dismiss",
-		}
-	}
-}
-
 func (c *Coordinator) checkStyleDeviation(ctx context.Context, text string, threshold float64) {
-	// Style agent requires pre-learned profiles - only trigger at high intensity
 	if c.intensity < 8 {
 		return
 	}
-	// At high intensity, fire up the style agent's AnalyzeStyle on recent profiles
-	// This is a lightweight notification that guides the user to manual style tools
 	profiles, _ := c.agents.Style.ListProfiles(ctx)
 	if len(profiles) > 0 {
 		c.notifCh <- Notification{
@@ -231,7 +190,7 @@ func (c *Coordinator) checkStyleDeviation(ctx context.Context, text string, thre
 
 func (c *Coordinator) detectForeshadow(ctx context.Context, chapterID, text string, threshold float64) {
 	if c.intensity < 4 {
-		return // only detect at medium+ intensity
+		return
 	}
 	candidates, err := c.agents.Foreshadow.AutoDetectForeshadowing(ctx, text)
 	if err != nil || len(candidates) == 0 {
@@ -252,34 +211,10 @@ func (c *Coordinator) detectForeshadow(ctx context.Context, chapterID, text stri
 	}
 }
 
-func (c *Coordinator) matchInspiration(ctx context.Context, text string, threshold float64) {
-	if c.intensity < 3 {
-		return
-	}
-	matches, err := c.agents.Inspiration.ContextPush(ctx, "", []string{text})
-	if err != nil || len(matches) == 0 {
-		return
-	}
-	for _, m := range matches {
-		if m.Score < threshold-0.3 {
-			continue
-		}
-		c.notifCh <- Notification{
-			ID:       uuid.New().String(),
-			Agent:    "inspiration",
-			Title:    fmt.Sprintf("灵感匹配 (%.0f%%)", m.Score*100),
-			Content:  m.Content,
-			Severity: "success",
-			Action:   "accept",
-		}
-	}
-}
-
 // RecordUserAction logs whether the user accepted or dismissed a suggestion.
 func (c *Coordinator) RecordUserAction(notifID, action string) {
 	c.sessionMu.Lock()
 	defer c.sessionMu.Unlock()
-	// Log to session (details available from notifID if needed)
 	ev := SessionEvent{
 		ID:         uuid.New().String(),
 		Type:       "user_action",

@@ -186,7 +186,6 @@ onMounted(() => { loadProfiles(); loadChapters() })
 
 <style scoped>
 .style-panel {
-  border-top: 1px solid #21262d;
 }
 
 .panel-section-header {

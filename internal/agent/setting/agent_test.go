@@ -81,7 +81,7 @@ func inMemoryDB(t *testing.T) *gorm.DB {
 func TestUploadWorldSetting(t *testing.T) {
 	db := inMemoryDB(t)
 	db.AutoMigrate(&models.WorldSetting{})
-	rlStore, err := vectordb.NewSQLiteStore(db, &mockEmbedder{vec: []float32{0.5, 0.5, 0, 0, 0}}, 5)
+	rlStore, err := vectordb.NewSQLiteStore(db, &mockEmbedder{vec: []float32{0.5, 0.5, 0, 0, 0}})
 	if err != nil {
 		t.Fatalf("create store: %v", err)
 	}
@@ -97,49 +97,119 @@ func TestUploadWorldSetting(t *testing.T) {
 	}
 }
 
-func TestCheckConsistency_NoConflict(t *testing.T) {
-	agent := NewAgent(
-		&mockStore{docs: []vectordb.Document{
-			{Content: "主角拥有火系魔法天赋", Metadata: `{"title":"主角设定"}`},
-		}}, &mockEmbedder{}, &mockLLM{response: `[]`}, "test", nil)
-	w, err := agent.CheckConsistency(context.Background(), "主角使用火球术")
+func TestDetectSettingsInChapter(t *testing.T) {
+	db := inMemoryDB(t)
+	db.AutoMigrate(&models.WorldSetting{})
+	db.Create(&models.WorldSetting{ID: "s1", Title: "魔法体系", Content: "魔法分三类", Type: "世界观"})
+	db.Create(&models.WorldSetting{ID: "s2", Title: "龙族", Content: "龙族是远古种族", Type: "种族"})
+	db.Create(&models.WorldSetting{ID: "s3", Title: "", Content: "空标题设定", Type: "其他"})
+	db.Create(&models.WorldSetting{ID: "s4", Title: "不存在的关键词", Content: "test", Type: "其他"})
+
+	agent := NewAgent(nil, nil, nil, "", db)
+	hits, err := agent.DetectSettingsInChapter("在这个世界中，魔法体系是核心设定，龙族是魔法体系的重要组成", true, false)
 	if err != nil {
-		t.Fatalf("CheckConsistency: %v", err)
+		t.Fatalf("DetectSettingsInChapter: %v", err)
 	}
-	if len(w) != 0 {
-		t.Errorf("want 0 conflicts, got %d: %v", len(w), w)
+	if len(hits) != 2 {
+		t.Fatalf("want 2 hits, got %d: %+v", len(hits), hits)
+	}
+
+	found := make(map[string]bool)
+	for _, h := range hits {
+		found[h.Title] = true
+	}
+	if !found["魔法体系"] {
+		t.Error("should find 魔法体系")
+	}
+	if !found["龙族"] {
+		t.Error("should find 龙族")
+	}
+
+	// 魔法体系 出现 twice in the text
+	for _, h := range hits {
+		if h.Title == "魔法体系" && h.Occurrences != 2 {
+			t.Errorf("魔法体系 should appear 2 times, got %d", h.Occurrences)
+		}
+	}
+
+	// Empty content
+	hits, err = agent.DetectSettingsInChapter("", true, false)
+	if err != nil {
+		t.Fatalf("empty content: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Errorf("want 0 hits for empty content, got %d", len(hits))
+	}
+
+	// Case sensitive test
+	db.Create(&models.WorldSetting{ID: "s5", Title: "ABC", Content: "test", Type: "其他"})
+	hits, _ = agent.DetectSettingsInChapter("abc def ABC", true, false)
+	foundABC := false
+	for _, h := range hits {
+		if h.Title == "ABC" {
+			foundABC = true
+			if h.Occurrences != 1 {
+				t.Errorf("case-sensitive ABC should appear 1 time, got %d", h.Occurrences)
+			}
+		}
+	}
+	if !foundABC {
+		t.Error("case-sensitive should find ABC")
+	}
+
+	hitsCI, _ := agent.DetectSettingsInChapter("abc def ABC", false, false)
+	foundABCCI := false
+	for _, h := range hitsCI {
+		if h.Title == "ABC" {
+			foundABCCI = true
+			if h.Occurrences != 2 {
+				t.Errorf("case-insensitive ABC should appear 2 times, got %d", h.Occurrences)
+			}
+		}
+	}
+	if !foundABCCI {
+		t.Error("case-insensitive should find ABC")
 	}
 }
 
-func TestCheckConsistency_WithConflict(t *testing.T) {
-	agent := NewAgent(
-		&mockStore{docs: []vectordb.Document{
-			{Content: "主角是冰系魔法师，无法使用火系魔法", Metadata: `{"title":"角色设定"}`},
-		}}, &mockEmbedder{}, &mockLLM{response: `[{"conflict_desc":"主角用了火球术但设定是冰系","suggested_fix":"改为冰箭术","reference_text":"主角是冰系魔法师"}]`}, "test", nil)
-	w, err := agent.CheckConsistency(context.Background(), "主角使用火球术攻击")
+func TestValidateSettingConflict_NoConflict(t *testing.T) {
+	db := inMemoryDB(t)
+	db.AutoMigrate(&models.WorldSetting{})
+	db.Create(&models.WorldSetting{ID: "s1", Title: "魔法", Content: "主角是冰系魔法师，无法使用火系魔法", Type: "世界观"})
+
+	agent := NewAgent(nil, nil, &mockLLM{response: `{"has_conflict": false}`}, "test", db)
+	result, err := agent.ValidateSettingConflict("s1", "主角使用魔法战斗")
 	if err != nil {
-		t.Fatalf("CheckConsistency: %v", err)
+		t.Fatalf("ValidateSettingConflict: %v", err)
 	}
-	if len(w) != 1 {
-		t.Fatalf("want 1 conflict, got %d", len(w))
+	if result.HasConflict {
+		t.Error("should not have conflict")
 	}
-	if !strings.Contains(w[0].ConflictDesc, "火球术") {
-		t.Errorf("bad conflict_desc: %s", w[0].ConflictDesc)
-	}
-	if !strings.Contains(w[0].SuggestedFix, "冰箭术") {
-		t.Errorf("bad suggested_fix: %s", w[0].SuggestedFix)
+	if result.SettingTitle != "魔法" {
+		t.Errorf("bad title: %s", result.SettingTitle)
 	}
 }
 
-func TestCheckConsistency_EmptyContent(t *testing.T) {
-	agent := NewAgent(&mockStore{}, &mockEmbedder{}, &mockLLM{}, "test", nil)
-	w, _ := agent.CheckConsistency(context.Background(), "")
-	if len(w) != 0 {
-		t.Errorf("want 0, got %d", len(w))
+func TestValidateSettingConflict_WithConflict(t *testing.T) {
+	db := inMemoryDB(t)
+	db.AutoMigrate(&models.WorldSetting{})
+	db.Create(&models.WorldSetting{ID: "s1", Title: "魔法", Content: "主角是冰系魔法师，无法使用火系魔法", Type: "世界观"})
+
+	agent := NewAgent(nil, nil, &mockLLM{
+		response: `{"has_conflict": true, "conflict_desc": "主角使用了火球术但设定为冰系", "suggested_fix": "改为冰箭术", "reference_text": "主角是冰系魔法师，无法使用火系魔法"}`,
+	}, "test", db)
+	result, err := agent.ValidateSettingConflict("s1", "主角使用魔法发出火球术攻击敌人")
+	if err != nil {
+		t.Fatalf("ValidateSettingConflict: %v", err)
 	}
-	w, _ = agent.CheckConsistency(context.Background(), "   ")
-	if len(w) != 0 {
-		t.Errorf("want 0, got %d", len(w))
+	if !result.HasConflict {
+		t.Fatal("should have conflict")
+	}
+	if !strings.Contains(result.ConflictDesc, "火球术") {
+		t.Errorf("bad conflict_desc: %s", result.ConflictDesc)
+	}
+	if !strings.Contains(result.SuggestedFix, "冰箭术") {
+		t.Errorf("bad suggested_fix: %s", result.SuggestedFix)
 	}
 }
 
@@ -164,38 +234,6 @@ func TestChunkText(t *testing.T) {
 				if len([]rune(c)) > tt.maxChars+10 {
 					t.Errorf("chunk %d > %d", len([]rune(c)), tt.maxChars)
 				}
-			}
-		})
-	}
-}
-
-func TestParseLLMResponse(t *testing.T) {
-	tests := []struct {
-		name    string
-		resp    string
-		wantLen int
-		wantErr bool
-	}{
-		{"empty array", `[]`, 0, false},
-		{"one", `[{"conflict_desc":"d","suggested_fix":"f","reference_text":"r"}]`, 1, false},
-		{"multiple", `[{"conflict_desc":"d1","suggested_fix":"f1","reference_text":"r1"},{"conflict_desc":"d2","suggested_fix":"f2","reference_text":"r2"}]`, 2, false},
-		{"with surrounding", `检查发现：[{"conflict_desc":"d","suggested_fix":"f","reference_text":"r"}] 请修改`, 1, false},
-		{"no JSON", `没有冲突`, 0, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r, err := parseLLMResponse(tt.resp, nil)
-			if tt.wantErr {
-				if err == nil {
-					t.Error("want error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if len(r) != tt.wantLen {
-				t.Errorf("want %d, got %d", tt.wantLen, len(r))
 			}
 		})
 	}

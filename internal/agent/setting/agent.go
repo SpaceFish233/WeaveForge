@@ -111,77 +111,200 @@ func (a *Agent) DeleteSetting(ctx context.Context, id string) error {
 	return a.db.WithContext(ctx).Delete(&models.WorldSetting{}, "id = ?", id).Error
 }
 
-func (a *Agent) CheckConsistency(ctx context.Context, chapterContent string) ([]ConflictWarning, error) {
-	if strings.TrimSpace(chapterContent) == "" {
-		return nil, nil
-	}
-	results, err := a.store.SearchSimilar(ctx, chapterContent, 5)
-	if err != nil {
-		return nil, fmt.Errorf("setting: search: %w", err)
-	}
-	if len(results) == 0 {
-		return nil, nil
-	}
-	var sb strings.Builder
-	sb.WriteString("以下是该作品的设定资料：\n\n")
-	for _, r := range results {
-		var meta map[string]string
-		json.Unmarshal([]byte(r.Metadata), &meta)
-		title := meta["title"]
-		if title == "" {
-			title = "未命名设定"
-		}
-		sb.WriteString(fmt.Sprintf("【%s】\n%s\n\n", title, r.Content))
-	}
-	sb.WriteString("---\n待检查的小说段落：\n" + chapterContent)
+// ─── Detection (no AI) ────────────────────────────────────────────────
 
-	resp, err := a.llm.ChatCompletion(ctx, []llm.Message{
-		{Role: "system", Content: "你是一个网络小说设定一致性检查专家。检查小说内容是否与设定资料存在矛盾。对每个冲突以JSON数组格式返回，每个元素包含 conflict_desc（冲突描述）、suggested_fix（建议修改）、reference_text（引用设定原文）。如果没有冲突返回空数组 []。只输出JSON，不要其他文字。"},
-		{Role: "user", Content: sb.String()},
+var isPunctOrSpace = regexp.MustCompile(`^[\p{P}\p{Z}\p{S}]+$`).MatchString
+
+func (a *Agent) DetectSettingsInChapter(chapterContent string, caseSensitive bool, wholeWord bool) ([]SettingHit, error) {
+	trimmed := strings.TrimSpace(chapterContent)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	var settings []models.WorldSetting
+	if err := a.db.Order("type asc, title asc").Find(&settings).Error; err != nil {
+		return nil, fmt.Errorf("setting: list: %w", err)
+	}
+
+	var hits []SettingHit
+	for _, s := range settings {
+		title := strings.TrimSpace(s.Title)
+		if title == "" || isPunctOrSpace(title) {
+			continue
+		}
+
+		occurrences, positions := countOccurrences(chapterContent, title, caseSensitive, wholeWord)
+		if occurrences == 0 {
+			continue
+		}
+
+		snippet := extractSnippet(chapterContent, positions[0], title, 100)
+		hits = append(hits, SettingHit{
+			ID:           s.ID,
+			Title:        title,
+			Occurrences:  occurrences,
+			FirstSnippet: snippet,
+		})
+	}
+	return hits, nil
+}
+
+func countOccurrences(text, keyword string, caseSensitive, wholeWord bool) (int, []int) {
+	src := text
+	kw := keyword
+	if !caseSensitive {
+		src = strings.ToLower(text)
+		kw = strings.ToLower(keyword)
+	}
+
+	if wholeWord {
+		escaped := regexp.QuoteMeta(kw)
+		re, err := regexp.Compile(`\b` + escaped + `\b`)
+		if err != nil {
+			return 0, nil
+		}
+		matches := re.FindAllStringIndex(src, -1)
+		positions := make([]int, len(matches))
+		for i, m := range matches {
+			positions[i] = m[0]
+		}
+		return len(matches), positions
+	}
+
+	var positions []int
+	offset := 0
+	for {
+		idx := strings.Index(src[offset:], kw)
+		if idx < 0 {
+			break
+		}
+		positions = append(positions, offset+idx)
+		offset += idx + len(kw)
+	}
+	return len(positions), positions
+}
+
+func extractSnippet(text string, pos int, keyword string, contextWidth int) string {
+	start := pos - contextWidth
+	if start < 0 {
+		start = 0
+	}
+	end := pos + utf8.RuneCountInString(keyword) + contextWidth
+	if end > utf8.RuneCountInString(text) {
+		end = utf8.RuneCountInString(text)
+	}
+	runes := []rune(text)
+	if start > len(runes) {
+		start = len(runes)
+	}
+	if end > len(runes) {
+		end = len(runes)
+	}
+	snippet := string(runes[start:end])
+	if start > 0 {
+		snippet = "…" + snippet
+	}
+	if end < len(runes) {
+		snippet = snippet + "…"
+	}
+	return snippet
+}
+
+// ─── Validation (AI) ──────────────────────────────────────────────────
+
+const maxSnippets = 20
+const contextChars = 200
+
+func (a *Agent) ValidateSettingConflict(settingID string, chapterContent string) (*ConflictResult, error) {
+	s, err := a.GetSetting(context.Background(), settingID)
+	if err != nil {
+		return nil, fmt.Errorf("setting: get: %w", err)
+	}
+
+	_, positions := countOccurrences(chapterContent, s.Title, true, false)
+	if len(positions) == 0 {
+		return &ConflictResult{
+			SettingTitle: s.Title,
+			HasConflict:  false,
+			ConflictDesc: "设定标题在正文中未找到（可能已被修改），请重新检测。",
+		}, nil
+	}
+
+	truncated := 0
+	if len(positions) > maxSnippets {
+		truncated = len(positions) - maxSnippets
+		positions = positions[:maxSnippets]
+	}
+
+	var snippets []string
+	for _, pos := range positions {
+		snippet := extractSnippet(chapterContent, pos, s.Title, contextChars)
+		snippets = append(snippets, snippet)
+	}
+
+	prompt := buildValidationPrompt(s.Title, s.Content, snippets)
+	resp, err := a.llm.ChatCompletion(context.Background(), []llm.Message{
+		{Role: "system", Content: "你是一个网络小说设定一致性检查专家。检查小说段落是否与设定存在冲突。返回JSON格式结果，包含 has_conflict(布尔)、conflict_desc(冲突描述，无不填)、suggested_fix(修改建议，无不填)、reference_text(引用相关设定原文，无不填)。只输出JSON，不要其他文字。"},
+		{Role: "user", Content: prompt},
 	}, a.chatModel, llm.ChatOption{Temperature: 0.1})
 	if err != nil {
 		return nil, fmt.Errorf("setting: llm: %w", err)
 	}
-	return parseLLMResponse(resp, results)
+
+	result := parseValidationResponse(resp, s.Title, snippets, truncated)
+	return result, nil
 }
 
-func parseLLMResponse(resp string, refDocs []vectordb.Document) ([]ConflictWarning, error) {
-	re := regexp.MustCompile(`\[[\s\S]*\]`)
-	matches := re.FindString(resp)
-	if matches == "" {
-		return nil, fmt.Errorf("no JSON array in LLM response")
+func buildValidationPrompt(title, content string, snippets []string) string {
+	var sb strings.Builder
+	sb.WriteString("【设定标题】")
+	sb.WriteString(title)
+	sb.WriteString("\n【设定描述】\n")
+	sb.WriteString(content)
+	sb.WriteString("\n\n【待检查的小说段落】\n")
+	for i, sn := range snippets {
+		sb.WriteString(fmt.Sprintf("--- 段落 %d ---\n%s\n\n", i+1, sn))
 	}
-	var jc []jsonConflict
-	if err := json.Unmarshal([]byte(matches), &jc); err != nil {
-		return nil, fmt.Errorf("parse JSON: %w", err)
-	}
-	refMap := make(map[string]string)
-	for _, d := range refDocs {
-		var meta map[string]string
-		if err := json.Unmarshal([]byte(d.Metadata), &meta); err == nil {
-			if t := meta["title"]; t != "" {
-				refMap[d.Content[:len(d.Content)/2]] = t
-			}
-		}
-	}
-	warnings := make([]ConflictWarning, 0, len(jc))
-	for _, c := range jc {
-		if c.ConflictDesc == "" {
-			continue
-		}
-		title := ""
-		for ref, t := range refMap {
-			if strings.Contains(c.ReferenceText, ref) || strings.Contains(ref, c.ReferenceText) {
-				title = t
-				break
-			}
-		}
-		warnings = append(warnings, ConflictWarning{ConflictDesc: c.ConflictDesc, SuggestedFix: c.SuggestedFix, ReferenceText: c.ReferenceText, SettingTitle: title})
-	}
-	return warnings, nil
+	sb.WriteString("请逐段分析是否与设定存在冲突。")
+	return sb.String()
 }
 
-// --- chunkText / splitSentences (same as before) ---
+func parseValidationResponse(resp, title string, snippets []string, truncated int) *ConflictResult {
+	re := regexp.MustCompile(`\{[\s\S]*\}`)
+	match := re.FindString(resp)
+	if match == "" {
+		return &ConflictResult{
+			SettingTitle:  title,
+			HasConflict:   false,
+			ConflictDesc:  "无法解析 AI 返回结果",
+			Snippets:      snippets,
+			TruncatedFrom: truncated,
+		}
+	}
+
+	var jc jsonConflict
+	if err := json.Unmarshal([]byte(match), &jc); err != nil {
+		return &ConflictResult{
+			SettingTitle:  title,
+			HasConflict:   false,
+			ConflictDesc:  fmt.Sprintf("解析 AI 结果失败: %v", err),
+			Snippets:      snippets,
+			TruncatedFrom: truncated,
+		}
+	}
+
+	return &ConflictResult{
+		SettingTitle:  title,
+		HasConflict:   jc.HasConflict,
+		ConflictDesc:  jc.ConflictDesc,
+		SuggestedFix:  jc.SuggestedFix,
+		ReferenceText: jc.ReferenceText,
+		Snippets:      snippets,
+		TruncatedFrom: truncated,
+	}
+}
+
+// ─── chunkText / splitSentences ───────────────────────────────────────
 
 func chunkText(text string, maxChars int) []string {
 	text = strings.TrimSpace(text)

@@ -2,15 +2,14 @@
 
 多 Agent 网络小说辅助写作桌面应用。
 
-基于 **Go + Wails v2 + Vue 3 + Tiptap** 构建，所有 AI 功能通过在线 API 调用，无需本地 GPU 或模型文件。
+基于 **Go + Wails v2 + Vue 3 + Tiptap** 构建，AI 功能通过在线 API 调用，Embedding 支持在线 API 和本地 llama.cpp 模型两种方式。
 
 ## 功能特性
 
 | 模块 | 功能 |
 |---|---|
 | **✍ 写作编辑器** | Tiptap 富文本编辑器，支持粗体、斜体、下划线、标题、列表、引用；自动保存至本地 SQLite |
-| **⚡ 设定校验** | 上传世界观/人物等设定，写作时自动检测与设定的冲突 |
-| **💡 灵感匹配** | 快捷键 `Ctrl+Shift+I` 速记灵感，自动向量检索匹配相关灵感 |
+| **⚡ 设定校验** | 手动检测章节正文中的设定关键词，逐条 AI 校验是否与设定冲突 |
 | **🔮 伏笔管理** | 自动识别伏笔句式，追踪伏笔揭示状态，生成健康报告 |
 | **✒ 风格润色** | 学习已有章节风格，对文本进行不同程度润色 |
 | **🧭 剧情推演** | 生成多条剧情分支，分析逻辑漏洞与节奏，融合为连贯章节 |
@@ -21,11 +20,11 @@
 ┌──────────┐  ┌──────────────────────┐  ┌──────────────┐
 │ 章节目录  │  │                      │  │  智能助手     │
 │          │  │   Tiptap 富文本编辑器  │  │  ─────────   │
-│ 第一章    │  │                      │  │  ⚡ 设定校验   │
-│ 第二章    │  │                      │  │  💡 灵感匹配   │
-│ 第三章    │  │                      │  │  🔮 伏笔检测   │
-│          │  │                      │  │  ✒ 风格润色   │
-│ [+ 新建] │  │                      │  │              │
+│ 第一章    │  │                      │  │  风格润色     │
+│ 第二章    │  │                      │  │  设定校验     │
+│          │  │                      │  │              │
+│          │  │                      │  │  通知流      │
+│ [+ 新建] │  │                      │  │  自动建议     │
 └──────────┘  └──────────────────────┘  └──────────────┘
 ```
 
@@ -75,20 +74,12 @@ wails build
 ## 首次配置
 
 1. 启动应用后，点击顶部「**设定管理**」→「**API 设置**」
-2. 选择 LLM 提供商（DeepSeek / OpenAI / 自定义）
+2. 选择 LLM 提供商（OpenAI 格式 / Anthropic 格式）
 3. 粘贴 API Key，点击「测试」验证连接
-4. 配置 Embedding 提供商（可与 LLM 不同）
+4. 配置 Embedding 引擎（内置哈希向量 / llama.cpp + GGUF 本地模型）
 5. 点击「**保存配置**」
 
 配置存储在 `~/.weaveforge/config.json`，API Key 自动 base64 编码。
-
-## 快捷键
-
-| 快捷键 | 功能 |
-|---|---|
-| `Ctrl+Shift+I` | 打开灵感速记弹窗 |
-| `Ctrl+Enter` | 灵感速记中保存 |
-| `Esc` | 关闭弹窗 / 取消 |
 
 ## 数据存储
 
@@ -112,6 +103,7 @@ Linux:    ~/.weaveforge/weaveforge.db
 | 编辑器 | Tiptap |
 | 数据库 | SQLite + GORM |
 | 向量搜索 | SQLite BLOB + 内存余弦相似度 |
+| 本地 Embedding | llama.cpp + GGUF 模型 |
 | LLM API | OpenAI 协议兼容 |
 | 构建产物 | 单文件原生 exe |
 
@@ -126,23 +118,26 @@ weaveforge/
 │   ├── chapter.go
 │   ├── world_setting.go
 │   ├── style_profile.go
-│   ├── inspiration.go
 │   └── foreshadowing.go
 ├── db/database.go           # SQLite 初始化
 ├── services/chapter.go      # 章节 CRUD
 ├── parser/parser.go         # 文档解析
 ├── internal/
 │   ├── config/              # 配置管理
-│   ├── vectordb/            # 向量存储
+│   ├── vectordb/            # 向量存储与本地 Embedding
 │   ├── llm/                 # LLM / Embedding 客户端
 │   ├── coordinator/         # 统筹器
 │   └── agent/
 │       ├── character/        # 人物管理
-│       ├── setting/         # 设定管理
+│       ├── setting/         # 设定管理与校验
 │       ├── style/           # 风格润色
-│       ├── inspiration/     # 灵感沉淀
 │       ├── foreshadow/      # 伏笔管理
 │       └── plotengine/      # 剧情推演
+├── tools/                   # 外部工具（不提交到 Git）
+│   ├── llama-cpp/           # llama.cpp 可执行文件
+│   │   └── llama-server.exe
+│   └── models/              # GGUF 模型文件
+│       └── *.gguf
 └── frontend/                # Vue 3 + TS
     ├── src/
     │   ├── App.vue
@@ -158,7 +153,7 @@ weaveforge/
 开发模式 (`wails dev`) 每次需要完整编译，约 15-30 秒。日常使用请用 `wails build` 编译一次，之后双击 exe 启动，2 秒内打开。
 
 **能否离线使用？**
-可以打开应用、浏览和编辑已保存的章节，但所有 AI 功能（设定校验、风格润色、灵感匹配、伏笔检测、剧情推演）都需要在线 API 调用。
+可以打开应用、浏览和编辑已保存的章节。使用内置哈希向量引擎时，设定管理等向量功能可离线使用。LLM 对话、设定校验、风格润色、伏笔检测、剧情推演等 AI 功能需要在线 API 调用。
 
 ## 许可
 

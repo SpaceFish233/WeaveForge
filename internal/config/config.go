@@ -27,9 +27,7 @@ type EmbeddingConfig struct {
 	Port       int    `json:"port"`        // local port (default 18635)
 }
 
-type VectorDBConfig struct {
-	Dimension int `json:"dimension"`
-}
+type VectorDBConfig struct{}
 
 func defaults() *Config {
 	return &Config{
@@ -42,7 +40,7 @@ func defaults() *Config {
 			Engine: "hash",
 			Port:   18635,
 		},
-		VectorDB: VectorDBConfig{Dimension: 512},
+		VectorDB: VectorDBConfig{},
 	}
 }
 
