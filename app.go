@@ -11,6 +11,7 @@ import (
 	"weaveforge/internal/agent/plotengine"
 	"weaveforge/internal/agent/setting"
 	"weaveforge/internal/agent/style"
+	"weaveforge/internal/agent/typo"
 	"weaveforge/internal/config"
 	"weaveforge/internal/coordinator"
 	"weaveforge/internal/llm"
@@ -31,13 +32,14 @@ type App struct {
 	styleAgent       *style.Agent
 	foreshadowAgent  *foreshadow.Agent
 	plotEngine       *plotengine.Agent
+	typoAgent        *typo.Agent
 	coordinator      *coordinator.Coordinator
 	appConfig        *config.Config
 	embedder         vectordb.Embedder
 }
 
-func NewApp(cs *services.ChapterService, vs *services.VolumeService, ca *character.Agent, sa *setting.Agent, sta *style.Agent, fa *foreshadow.Agent, pe *plotengine.Agent, co *coordinator.Coordinator, cfg *config.Config, emb vectordb.Embedder) *App {
-	return &App{chapter: cs, volume: vs, characterAgent: ca, settingAgent: sa, styleAgent: sta, foreshadowAgent: fa, plotEngine: pe, coordinator: co, appConfig: cfg, embedder: emb}
+func NewApp(cs *services.ChapterService, vs *services.VolumeService, ca *character.Agent, sa *setting.Agent, sta *style.Agent, fa *foreshadow.Agent, pe *plotengine.Agent, ta *typo.Agent, co *coordinator.Coordinator, cfg *config.Config, emb vectordb.Embedder) *App {
+	return &App{chapter: cs, volume: vs, characterAgent: ca, settingAgent: sa, styleAgent: sta, foreshadowAgent: fa, plotEngine: pe, typoAgent: ta, coordinator: co, appConfig: cfg, embedder: emb}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -115,6 +117,10 @@ func (a *App) AnalyseBranch(branch plotengine.Branch) (*plotengine.BranchAnalysi
 func (a *App) MergeBranches(selectedPoints []string) (string, error) { return a.plotEngine.MergeBranches(a.ctx, selectedPoints) }
 func (a *App) GenerateDialogue(charactersJSON, plotSummary string) (string, error) { return a.plotEngine.GenerateDialogue(a.ctx, charactersJSON, plotSummary) }
 func (a *App) ReviseDialogue(originalDialogue, revisionPrompt string) (string, error) { return a.plotEngine.ReviseDialogue(a.ctx, originalDialogue, revisionPrompt) }
+
+// ─── Typo Detection API ───────────────────────────────────────────────
+
+func (a *App) DetectTypos(chapterContent string) ([]typo.TypoSuggestion, error) { return a.typoAgent.DetectTypos(a.ctx, chapterContent) }
 
 // ─── Config API ─────────────────────────────────────────────────────
 

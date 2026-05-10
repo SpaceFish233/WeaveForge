@@ -4,6 +4,7 @@ import {plotengine} from '../models';
 import {foreshadow} from '../models';
 import {models} from '../models';
 import {setting} from '../models';
+import {typo} from '../models';
 import {config} from '../models';
 import {coordinator} from '../models';
 import {character} from '../models';
@@ -36,6 +37,8 @@ export function DeleteStyleProfile(arg1:string):Promise<void>;
 export function DeleteVolume(arg1:string):Promise<void>;
 
 export function DetectSettings(arg1:string,arg2:boolean,arg3:boolean):Promise<Array<setting.SettingHit>>;
+
+export function DetectTypos(arg1:string):Promise<Array<typo.TypoSuggestion>>;
 
 export function GenerateBranches(arg1:plotengine.GenerationParams):Promise<Array<plotengine.Branch>>;
 

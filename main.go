@@ -13,6 +13,7 @@ import (
 	"weaveforge/internal/agent/plotengine"
 	"weaveforge/internal/agent/setting"
 	"weaveforge/internal/agent/style"
+	"weaveforge/internal/agent/typo"
 	"weaveforge/internal/config"
 	"weaveforge/internal/coordinator"
 	"weaveforge/internal/llm"
@@ -98,13 +99,14 @@ func main() {
 	foreshadowAgent := foreshadow.NewAgent(db.DB, chatClient, chatModel)
 	plotEngine := plotengine.NewAgent(db.DB, chatClient, chatModel)
 	characterAgent := character.NewAgent(db.DB)
+	typoAgent := typo.NewAgent(chatClient, chatModel)
 
 	coord := coordinator.New(coordinator.AgentHolders{
 		Setting: settingAgent, Style: styleAgent,
 		Foreshadow: foreshadowAgent,
 	})
 	coord.Start()
-	app := NewApp(chapterService, volumeService, characterAgent, settingAgent, styleAgent, foreshadowAgent, plotEngine, coord, appConfig, embedder)
+	app := NewApp(chapterService, volumeService, characterAgent, settingAgent, styleAgent, foreshadowAgent, plotEngine, typoAgent, coord, appConfig, embedder)
 
 	if err := wails.Run(&options.App{
 		Title:  "WeaveForge",

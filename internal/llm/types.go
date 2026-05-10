@@ -33,6 +33,12 @@ func NewClient(baseURL, apiKey string) *Client {
 	return &Client{APIKey: apiKey, BaseURL: baseURL, http: &http.Client{Timeout: 120 * time.Second}}
 }
 
+// HasConfig returns true if the client has the minimum required configuration
+// (API key and base URL are both set).
+func (c *Client) HasConfig() bool {
+	return c.APIKey != "" && c.BaseURL != ""
+}
+
 func (c *Client) authHeader() string {
 	return fmt.Sprintf("Bearer %s", c.APIKey)
 }

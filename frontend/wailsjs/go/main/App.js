@@ -58,6 +58,10 @@ export function DetectSettings(arg1, arg2, arg3) {
   return window['go']['main']['App']['DetectSettings'](arg1, arg2, arg3);
 }
 
+export function DetectTypos(arg1) {
+  return window['go']['main']['App']['DetectTypos'](arg1);
+}
+
 export function GenerateBranches(arg1) {
   return window['go']['main']['App']['GenerateBranches'](arg1);
 }

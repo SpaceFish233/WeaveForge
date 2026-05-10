@@ -843,3 +843,28 @@ export namespace style {
 
 }
 
+export namespace typo {
+	
+	export class TypoSuggestion {
+	    sentence: string;
+	    start_index: number;
+	    end_index: number;
+	    error_word: string;
+	    suggestion: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TypoSuggestion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sentence = source["sentence"];
+	        this.start_index = source["start_index"];
+	        this.end_index = source["end_index"];
+	        this.error_word = source["error_word"];
+	        this.suggestion = source["suggestion"];
+	    }
+	}
+
+}
+

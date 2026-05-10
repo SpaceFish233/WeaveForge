@@ -6,6 +6,7 @@ import {
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 import ConsistencyCheck from './ConsistencyCheck.vue'
 import StylePanel from './StylePanel.vue'
+import TypoPanel from './TypoPanel.vue'
 
 interface Notification {
   id: string; agent: string; title: string; content: string
@@ -13,7 +14,14 @@ interface Notification {
 }
 
 const props = defineProps<{ chapterContent: string; chapterID: string | null }>()
-const emit = defineEmits<{ (e: 'insert', text: string): void }>()
+const emit = defineEmits<{
+  (e: 'insert', text: string): void
+  (e: 'contentUpdate', content: string): void
+}>()
+
+function handleTypoContentUpdate(content: string) {
+  emit('contentUpdate', content)
+}
 
 const intensity = ref(5)
 
@@ -94,6 +102,16 @@ onBeforeUnmount(() => { EventsOff('coordinator:notification'); if (writeTimer) c
         <div class="tool-header">⚡ 设定校验</div>
         <div class="tool-body">
           <ConsistencyCheck :chapterContent="chapterContent" />
+        </div>
+      </div>
+      <div class="tool-section">
+        <div class="tool-header">📝 错别字纠正</div>
+        <div class="tool-body">
+          <TypoPanel
+            :chapterContent="chapterContent"
+            :chapterID="chapterID"
+            @contentUpdate="handleTypoContentUpdate"
+          />
         </div>
       </div>
     </div>

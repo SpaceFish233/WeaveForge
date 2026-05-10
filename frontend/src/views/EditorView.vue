@@ -52,6 +52,11 @@ function handleInsertText(text: string) {
   handleContentUpdate(currentContent.value)
 }
 
+function handleTypoContentUpdate(content: string) {
+  currentContent.value = content
+  handleContentUpdate(content)
+}
+
 async function handleMarkForeshadow(text: string) {
   if (!currentChapterId.value) return
   try {
@@ -87,6 +92,7 @@ async function handleMarkForeshadow(text: string) {
         :chapterContent="currentContent"
         :chapterID="currentChapterId"
         @insert="handleInsertText"
+        @contentUpdate="handleTypoContentUpdate"
       />
     </aside>
   </div>

@@ -193,7 +193,7 @@ onMounted(loadConfig)
 
 <style scoped>
 .api-page { height: 100%; overflow-y: auto; padding: 32px 40px; background: #0d1117; }
-.api-form { max-width: 620px; }
+.api-form { max-width: 620px; margin: 0 auto; }
 h3 { font-size: 16px; font-weight: 600; color: #f0f6fc; margin: 0 0 4px; }
 .hint { font-size: 12px; color: #8b949e; margin: 0 0 20px; }
 .divider { height: 1px; background: #21262d; margin: 24px 0; }
