@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"weaveforge/internal/agent/character"
 	"weaveforge/internal/agent/foreshadow"
@@ -35,6 +37,7 @@ type App struct {
 	typoAgent        *typo.Agent
 	coordinator      *coordinator.Coordinator
 	appConfig        *config.Config
+	configMu         sync.RWMutex
 	embedder         vectordb.Embedder
 }
 
@@ -49,6 +52,12 @@ func (a *App) startup(ctx context.Context) {
 	}
 }
 
+func (a *App) shutdown(_ context.Context) {
+	if a.coordinator != nil {
+		a.coordinator.Stop()
+	}
+}
+
 // ─── Chapter API ────────────────────────────────────────────────────
 
 func (a *App) CreateChapter(title, content, volumeID string) (string, error) { return a.chapter.CreateChapter(title, content, volumeID) }
@@ -60,7 +69,14 @@ func (a *App) GetChapter(chapterID string) (models.Chapter, error)           { r
 func (a *App) ListChapters() ([]models.ChapterSummary, error)                { return a.chapter.ListChapters() }
 func (a *App) ReorderChapters(chapterIDs []string) error                     { return a.chapter.ReorderChapters(chapterIDs) }
 
-func (a *App) ImportDocument(filePath string) ([]string, error) { chs, err := parser.ParseFile(filePath); if err != nil { return nil, err }; return a.importChapters(chs) }
+func (a *App) ImportDocument(filePath string) ([]string, error) {
+	cleanPath := filepath.Clean(filePath)
+	chs, err := parser.ParseFile(cleanPath)
+	if err != nil {
+		return nil, err
+	}
+	return a.importChapters(chs)
+}
 func (a *App) ImportContent(filename, content string) ([]string, error) { ext := ""; if idx := strings.LastIndex(filename, "."); idx >= 0 { ext = filename[idx:] }; return a.importChapters(parser.ParseContent(content, ext)) }
 func (a *App) importChapters(chs []parser.ParsedChapter) ([]string, error) { var ids []string; for _, ch := range chs { id, err := a.chapter.CreateChapter(ch.Title, ch.Content, ""); if err != nil { return ids, err }; ids = append(ids, id) }; return ids, nil }
 
@@ -124,8 +140,42 @@ func (a *App) DetectTypos(chapterContent string) ([]typo.TypoSuggestion, error) 
 
 // ─── Config API ─────────────────────────────────────────────────────
 
-func (a *App) GetConfig() *config.Config { return a.appConfig }
-func (a *App) UpdateConfig(cfg *config.Config) error { if err := config.Save(cfg); err != nil { return err }; a.appConfig = cfg; return nil }
+func maskAPIKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	runes := []rune(key)
+	if len(runes) <= 4 {
+		return string(runes) + "****"
+	}
+	return string(runes[:4]) + "****"
+}
+
+func (a *App) GetConfig() *config.Config {
+	a.configMu.RLock()
+	defer a.configMu.RUnlock()
+	// Return a copy with API key masked to avoid exposing plaintext
+	masked := *a.appConfig
+	masked.LLM.APIKey = maskAPIKey(a.appConfig.LLM.APIKey)
+	return &masked
+}
+func (a *App) UpdateConfig(cfg *config.Config) error {
+	// If the submitted API key is the masked value, preserve the original key
+	a.configMu.RLock()
+	originalKey := a.appConfig.LLM.APIKey
+	a.configMu.RUnlock()
+	masked := maskAPIKey(originalKey)
+	if cfg.LLM.APIKey == masked || cfg.LLM.APIKey == "" {
+		cfg.LLM.APIKey = originalKey
+	}
+	if err := config.Save(cfg); err != nil {
+		return err
+	}
+	a.configMu.Lock()
+	a.appConfig = cfg
+	a.configMu.Unlock()
+	return nil
+}
 
 func (a *App) TestLLMConnection(baseURL string, apiKey string) error {
 	client := llm.NewClient(baseURL, apiKey)
@@ -206,6 +256,8 @@ func (a *App) getEmbedderEngine() string {
 	if fe, ok := a.embedder.(*vectordb.FallbackEmbedder); ok {
 		return fe.Engine()
 	}
+	a.configMu.RLock()
+	defer a.configMu.RUnlock()
 	return a.appConfig.Embedding.Engine
 }
 

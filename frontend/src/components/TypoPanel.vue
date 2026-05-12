@@ -20,6 +20,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'contentUpdate', content: string): void
+  (e: 'flushAutoSave'): void
 }>()
 
 const detecting = ref(false)
@@ -96,6 +97,8 @@ function escapeHtml(s: string): string {
 async function handleCorrectSingle(idx: number) {
   if (!props.chapterID) return
   correctingIdx.value = idx
+  // Flush any pending auto-save before applying correction
+  emit('flushAutoSave')
   try {
     const t = typos.value[idx]
     const runes = Array.from(props.chapterContent)
@@ -115,6 +118,8 @@ async function handleCorrectSingle(idx: number) {
 async function handleCorrectAll() {
   if (!props.chapterID || typos.value.length === 0) return
   correctingIdx.value = -1
+  // Flush any pending auto-save before applying corrections
+  emit('flushAutoSave')
   try {
     // Sort by start_index descending to replace from end to start
     const sorted = [...typos.value].sort((a, b) => b.start_index - a.start_index)
@@ -306,6 +311,13 @@ async function handleCorrectAll() {
   word-break: break-all;
 }
 
+.typo-sentence :deep(.typo-highlight) {
+  color: #f85149;
+  font-weight: 600;
+  text-decoration: wavy underline #f85149;
+  text-underline-offset: 2px;
+}
+
 .typo-suggestion {
   font-size: 11px;
   color: #8b949e;
@@ -336,14 +348,4 @@ async function handleCorrectAll() {
 }
 .btn-fix:hover:not(:disabled) { background: #30363d; }
 .btn-fix:disabled { opacity: 0.5; cursor: not-allowed; }
-</style>
-
-<!-- Non-scoped styles for v-html rendered content -->
-<style>
-.typo-highlight {
-  color: #f85149;
-  font-weight: 600;
-  text-decoration: wavy underline #f85149;
-  text-underline-offset: 2px;
-}
 </style>

@@ -1,6 +1,8 @@
 package services
 
 import (
+	"fmt"
+
 	"weaveforge/models"
 
 	"github.com/google/uuid"
@@ -18,7 +20,9 @@ func NewVolumeService(db *gorm.DB) *VolumeService {
 func (s *VolumeService) CreateVolume(name string) (string, error) {
 	id := uuid.New().String()
 	var maxOrder int
-	s.db.Raw("SELECT COALESCE(MAX(sort_order), 0) FROM volumes").Scan(&maxOrder)
+	if err := s.db.Raw("SELECT COALESCE(MAX(sort_order), 0) FROM volumes").Scan(&maxOrder).Error; err != nil {
+		return "", fmt.Errorf("volume: get max sort_order: %w", err)
+	}
 
 	volume := models.Volume{
 		ID:        id,

@@ -1,35 +1,54 @@
 # Build output
 build/bin
+build/darwin/
+build/windows/
 *.exe
 *.test
 __debug_bin
+*.dll
 
 # Dependencies
 node_modules/
 frontend/dist/
+frontend/.nuxt/
+frontend/.vite/
 
 # Database
 *.db
+*.sqlite
 .weaveforge/
+db/*.db
 
 # System files
 .DS_Store
 Thumbs.db
 *.log
+*.tmp
 
 # IDE
 .vscode/
 .idea/
 .claude/
+*.swp
+*.swo
 
 # Environment
 .env
 .env.local
+.env.*
 
 # Go
 vendor/
 cover.out
 *.prof
+*.out
+*.race.out
 
 # External tools and models (llama.cpp, GGUF models)
 tools/
+models/*.gguf
+models/*.bin
+
+# Wails
+.wails/
+*.wails.json

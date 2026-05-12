@@ -57,10 +57,24 @@ func configPath() (string, error) {
 }
 
 func EncodeKey(key string) string {
-	return base64.StdEncoding.EncodeToString([]byte(key))
+	enc, err := encrypt(key)
+	if err != nil {
+		// Fallback to base64 if encryption fails
+		return base64.StdEncoding.EncodeToString([]byte(key))
+	}
+	return enc
 }
 
 func DecodeKey(encoded string) string {
+	if encoded == "" {
+		return ""
+	}
+	// Try AES-GCM decryption first (new format)
+	dec, err := decrypt(encoded)
+	if err == nil {
+		return dec
+	}
+	// Fallback: try legacy base64 decoding
 	data, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return encoded
@@ -84,11 +98,22 @@ func Load() (*Config, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}
+	// Auto-migrate old base64-encoded keys to AES-GCM
+	if cfg.LLM.APIKey != "" && !isEncrypted(cfg.LLM.APIKey) {
+		// Decrypt old format
+		oldKey := DecodeKey(cfg.LLM.APIKey)
+		if oldKey != "" {
+			cfg.LLM.APIKey = oldKey
+			// Re-save in new format (best effort)
+			_ = Save(cfg)
+		}
+	}
 	return cfg, nil
 }
 
 func Save(cfg *Config) error {
-	if !isBase64(cfg.LLM.APIKey) && cfg.LLM.APIKey != "" {
+	// Always encrypt the API key if it's not already encrypted
+	if cfg.LLM.APIKey != "" && !isEncrypted(cfg.LLM.APIKey) {
 		cfg.LLM.APIKey = EncodeKey(cfg.LLM.APIKey)
 	}
 	path, err := configPath()
@@ -102,11 +127,10 @@ func Save(cfg *Config) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-func isBase64(s string) bool {
-	_, err := base64.StdEncoding.DecodeString(s)
-	return err == nil && len(s) > 20
-}
-
 func DecryptConfig(cfg *Config) {
+	if cfg.LLM.APIKey == "" {
+		return
+	}
+	// Decrypt the key (handles both AES-GCM and legacy base64)
 	cfg.LLM.APIKey = DecodeKey(cfg.LLM.APIKey)
 }

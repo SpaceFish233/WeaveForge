@@ -78,6 +78,9 @@ func (a *Agent) DeleteCharacter(ctx context.Context, id string) error {
 
 // Marshal tags helper
 func MarshalTags(tags []string) string {
-	b, _ := json.Marshal(tags)
+	b, err := json.Marshal(tags)
+	if err != nil {
+		return "[]"
+	}
 	return string(b)
 }

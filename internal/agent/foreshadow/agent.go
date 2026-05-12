@@ -57,28 +57,30 @@ func (a *Agent) AutoDetectForeshadowing(ctx context.Context, chapterContent stri
 
 	// Step 1: Regex-based candidate extraction
 	runes := []rune(text)
+	byteToRune := buildByteToRuneMap(text)
 	var regexCandidates []CandidateForeshadow
 	for _, fp := range foreshadowPatterns {
 		matches := fp.pattern.FindAllStringIndex(text, -1)
 		for _, m := range matches {
+			// Convert byte offsets to rune offsets
+			rStart := byteToRune[m[0]]
+			rEnd := byteToRune[m[1]]
 			// Expand context: take ~40 chars around the match
-			start := m[0]
-			if start > 15 {
-				start -= 15
-			} else {
-				start = 0
+			ctxStart := rStart - 15
+			if ctxStart < 0 {
+				ctxStart = 0
 			}
-			end := m[1] + 25
-			if end > len(runes) {
-				end = len(runes)
+			ctxEnd := rEnd + 25
+			if ctxEnd > len(runes) {
+				ctxEnd = len(runes)
 			}
-			snippet := string(runes[start:end])
+			snippet := string(runes[ctxStart:ctxEnd])
 			regexCandidates = append(regexCandidates, CandidateForeshadow{
 				Text:       snippet,
 				Type:       fp.ftype,
 				Confidence: 0.5,
-				StartIndex: start,
-				EndIndex:   end,
+				StartIndex: rStart,
+				EndIndex:   rEnd,
 			})
 		}
 	}
@@ -326,6 +328,21 @@ func (a *Agent) SuggestReveal(ctx context.Context, currentChapterIndex int) ([]R
 		}
 	}
 	return results, nil
+}
+
+// buildByteToRuneMap builds a mapping from byte offset to rune offset for a string.
+// This is needed because regexp.FindAllStringIndex returns byte offsets,
+// but we work with rune slices for correct Unicode handling.
+func buildByteToRuneMap(s string) []int {
+	// byteToRune[bytePos] = runePos
+	m := make([]int, len(s)+1)
+	runePos := 0
+	for i := range s {
+		m[i] = runePos
+		runePos++
+	}
+	m[len(s)] = runePos
+	return m
 }
 
 // ─── Health Report ─────────────────────────────────────────────────────

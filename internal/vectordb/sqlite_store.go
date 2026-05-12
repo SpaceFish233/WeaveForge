@@ -104,6 +104,9 @@ func (s *SQLiteStore) AddDocuments(ctx context.Context, docs []Document) error {
 	return nil
 }
 
+// maxSearchDocs limits the number of documents loaded into memory for similarity search.
+const maxSearchDocs = 10000
+
 func (s *SQLiteStore) SearchSimilar(ctx context.Context, query string, topK int) ([]Document, error) {
 	// Step 1: embed the query text
 	queryVec, err := s.embed.Embed(ctx, query)
@@ -115,7 +118,7 @@ func (s *SQLiteStore) SearchSimilar(ctx context.Context, query string, topK int)
 	defer s.mu.RUnlock()
 
 	var rows []vectorDoc
-	if err := s.db.WithContext(ctx).Find(&rows).Error; err != nil {
+	if err := s.db.WithContext(ctx).Limit(maxSearchDocs).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("vectordb: query: %w", err)
 	}
 

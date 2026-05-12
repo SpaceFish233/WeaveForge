@@ -140,7 +140,10 @@ func (e *LlamaCppEmbedder) Embed(ctx context.Context, text string) ([]float32, e
 		"input": text,
 		"model": filepath.Base(e.modelPath),
 	}
-	data, _ := json.Marshal(body)
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		e.baseURL+"/v1/embeddings", bytes.NewReader(data))
@@ -194,7 +197,11 @@ func (e *LlamaCppEmbedder) Embed(ctx context.Context, text string) ([]float32, e
 // Close stops the llama-server process.
 func (e *LlamaCppEmbedder) Close() error {
 	if e.cmd != nil && e.cmd.Process != nil {
-		return e.cmd.Process.Kill()
+		if err := e.cmd.Process.Kill(); err != nil {
+			return err
+		}
+		// Wait for process to exit to avoid zombie processes
+		_ = e.cmd.Wait()
 	}
 	return nil
 }

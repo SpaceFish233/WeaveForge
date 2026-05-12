@@ -154,3 +154,56 @@ func TestForeshadowPatterns(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildByteToRuneMap(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		bytePos  int
+		wantRune int
+	}{
+		{"ASCII", "hello", 3, 3},
+		{"Chinese", "你好世界", 3, 1},   // 你 = 3 bytes
+		{"Chinese byte6", "你好世界", 6, 2}, // 你好 = 6 bytes
+		{"Mixed", "hi你好", 2, 2},         // hi = 2 bytes
+		{"Mixed byte5", "hi你好", 5, 3},   // hi你 = 5 bytes
+		{"Empty", "", 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := buildByteToRuneMap(tt.input)
+			if tt.bytePos < len(m) {
+				if m[tt.bytePos] != tt.wantRune {
+					t.Errorf("buildByteToRuneMap(%q)[%d] = %d, want %d", tt.input, tt.bytePos, m[tt.bytePos], tt.wantRune)
+				}
+			}
+		})
+	}
+}
+
+func TestAutoDetectForeshadowing_ChinesePositions(t *testing.T) {
+	db := inMemoryDB(t)
+	agent := NewAgent(db, nil, "test")
+
+	// Text with Chinese characters where byte positions != rune positions
+	text := "他并不知道自己的身世之谜，一个小小的玉佩埋下了祸根。"
+	candidates, err := agent.AutoDetectForeshadowing(context.Background(), text)
+	if err != nil {
+		t.Fatalf("autodetect: %v", err)
+	}
+
+	runes := []rune(text)
+	for _, c := range candidates {
+		// Verify that StartIndex and EndIndex are valid rune positions
+		if c.StartIndex < 0 || c.EndIndex > len(runes) || c.StartIndex >= c.EndIndex {
+			t.Errorf("invalid rune positions: StartIndex=%d, EndIndex=%d, text len=%d", c.StartIndex, c.EndIndex, len(runes))
+		}
+		// Verify that the snippet at the positions makes sense
+		if c.StartIndex < len(runes) && c.EndIndex <= len(runes) {
+			snippet := string(runes[c.StartIndex:c.EndIndex])
+			if snippet == "" {
+				t.Errorf("empty snippet at positions [%d:%d]", c.StartIndex, c.EndIndex)
+			}
+		}
+	}
+}

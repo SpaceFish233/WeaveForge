@@ -8,7 +8,52 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
+
+const maxRetries = 3
+
+// doWithRetry executes an HTTP request with exponential backoff for retryable errors (429, 5xx).
+func (c *Client) doWithRetry(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(1<<uint(attempt-1)) * time.Second // 1s, 2s
+			select {
+			case <-ctx.Done():
+				return nil, nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+
+		// Clone the body for retry (since it gets consumed)
+		resp, err := c.http.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("read response: %w", err)
+			continue
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			return resp, body, nil
+		}
+
+		// Only retry on 429 (rate limit) and 5xx (server error)
+		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+			lastErr = fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+			continue
+		}
+
+		// Non-retryable error (4xx except 429)
+		return nil, nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil, nil, fmt.Errorf("max retries exceeded: %w", lastErr)
+}
 
 // ChatCompletion calls an OpenAI-compatible chat API. Also supports Anthropic
 // format when using the anthropic provider (model starts with "claude-").
@@ -47,19 +92,9 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []Message, model s
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", c.authHeader())
 
-	httpClient := c.http
-	resp, err := httpClient.Do(httpReq)
+	_, respBody, err := c.doWithRetry(ctx, httpReq)
 	if err != nil {
 		return "", fmt.Errorf("llm: request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("llm: read: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("llm: status %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result struct {
@@ -132,19 +167,9 @@ func (c *Client) anthropicChat(ctx context.Context, messages []Message, model st
 	httpReq.Header.Set("x-api-key", c.APIKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	httpClient := c.http
-	resp, err := httpClient.Do(httpReq)
+	_, respBody, err := c.doWithRetry(ctx, httpReq)
 	if err != nil {
 		return "", fmt.Errorf("llm: anthropic failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("llm: anthropic read: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("llm: anthropic status %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result struct {

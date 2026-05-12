@@ -83,8 +83,10 @@ func (a *Agent) UpdateSetting(ctx context.Context, id, title, content, settingTy
 	if err := a.store.DeleteDocuments(ctx, map[string]string{"setting_id": id}); err != nil {
 		return err
 	}
-	if err := a.db.WithContext(ctx).Model(&models.WorldSetting{}).Where("id = ?", id).
-		Updates(map[string]interface{}{"title": title, "content": content, "type": settingType}).Error; err != nil {
+	if err := a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return tx.Model(&models.WorldSetting{}).Where("id = ?", id).
+			Updates(map[string]interface{}{"title": title, "content": content, "type": settingType}).Error
+	}); err != nil {
 		return err
 	}
 	chunks := chunkText(content, 500)
@@ -164,13 +166,17 @@ func countOccurrences(text, keyword string, caseSensitive, wholeWord bool) (int,
 			return 0, nil
 		}
 		matches := re.FindAllStringIndex(src, -1)
+		// Convert byte offsets to rune offsets
+		byteToRune := buildByteToRuneMap(src)
 		positions := make([]int, len(matches))
 		for i, m := range matches {
-			positions[i] = m[0]
+			positions[i] = byteToRune[m[0]]
 		}
 		return len(matches), positions
 	}
 
+	// Convert byte offsets to rune offsets
+	byteToRune := buildByteToRuneMap(src)
 	var positions []int
 	offset := 0
 	for {
@@ -178,16 +184,26 @@ func countOccurrences(text, keyword string, caseSensitive, wholeWord bool) (int,
 		if idx < 0 {
 			break
 		}
-		positions = append(positions, offset+idx)
+		positions = append(positions, byteToRune[offset+idx])
 		offset += idx + len(kw)
 	}
 	return len(positions), positions
 }
 
-func extractSnippet(text string, bytePos int, keyword string, contextWidth int) string {
-	// countOccurrences returns byte positions; convert to rune positions for []rune slicing
+// buildByteToRuneMap builds a mapping from byte offset to rune offset for a string.
+func buildByteToRuneMap(s string) []int {
+	m := make([]int, len(s)+1)
+	runePos := 0
+	for i := range s {
+		m[i] = runePos
+		runePos++
+	}
+	m[len(s)] = runePos
+	return m
+}
+
+func extractSnippet(text string, runePos int, keyword string, contextWidth int) string {
 	runes := []rune(text)
-	runePos := utf8.RuneCountInString(text[:bytePos])
 	kwLen := utf8.RuneCountInString(keyword)
 
 	start := runePos - contextWidth

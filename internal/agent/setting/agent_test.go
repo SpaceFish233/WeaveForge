@@ -231,10 +231,102 @@ func TestChunkText(t *testing.T) {
 				t.Errorf("want >= %d chunks, got %d", tt.min, len(chunks))
 			}
 			for _, c := range chunks {
-				if len([]rune(c)) > tt.maxChars+10 {
-					t.Errorf("chunk %d > %d", len([]rune(c)), tt.maxChars)
+				runeLen := len([]rune(c))
+				if runeLen > tt.maxChars+10 {
+					t.Errorf("chunk %d > %d", runeLen, tt.maxChars)
 				}
 			}
 		})
+	}
+}
+
+func TestCountOccurrences_RunePositions(t *testing.T) {
+	tests := []struct {
+		name      string
+		text      string
+		keyword   string
+		wantCount int
+		wantPos   []int
+	}{
+		{
+			name:      "pure Chinese",
+			text:      "在这个世界中，魔法体系是核心设定，魔法体系很重要",
+			keyword:   "魔法体系",
+			wantCount: 2,
+			wantPos:   []int{7, 17},
+		},
+		{
+			name:      "Chinese at start",
+			text:      "魔法体系是核心",
+			keyword:   "魔法体系",
+			wantCount: 1,
+			wantPos:   []int{0},
+		},
+		{
+			name:      "mixed Chinese and English",
+			text:      "使用Python编程语言和Go语言",
+			keyword:   "Go语言",
+			wantCount: 1,
+			wantPos:   []int{13},
+		},
+		{
+			name:      "English only",
+			text:      "Hello World, Hello Go",
+			keyword:   "Hello",
+			wantCount: 2,
+			wantPos:   []int{0, 13},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			count, positions := countOccurrences(tt.text, tt.keyword, true, false)
+			if count != tt.wantCount {
+				t.Errorf("count = %d, want %d", count, tt.wantCount)
+			}
+			if len(positions) != len(tt.wantPos) {
+				t.Fatalf("positions len = %d, want %d", len(positions), len(tt.wantPos))
+			}
+			for i, pos := range positions {
+				if pos != tt.wantPos[i] {
+					t.Errorf("positions[%d] = %d, want %d", i, pos, tt.wantPos[i])
+				}
+			}
+		})
+	}
+}
+
+func TestExtractSnippet_ChineseText(t *testing.T) {
+	text := "在这个世界中，魔法体系是核心设定。魔法体系分为三大类：元素、精神、时空。"
+	snippet := extractSnippet(text, 7, "魔法体系", 10)
+	runes := []rune(snippet)
+	found := false
+	for i := 0; i <= len(runes)-4; i++ {
+		if string(runes[i:i+4]) == "魔法体系" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("snippet should contain keyword, got: %s", snippet)
+	}
+	if len(runes) > 30 {
+		t.Errorf("snippet too long: %d runes", len(runes))
+	}
+}
+
+func TestCountOccurrences_WholeWord_RunePositions(t *testing.T) {
+	text := "ABC def ABC"
+	count, positions := countOccurrences(text, "ABC", true, true)
+	if count != 2 {
+		t.Errorf("count = %d, want 2", count)
+	}
+	if len(positions) != 2 {
+		t.Fatalf("positions len = %d, want 2", len(positions))
+	}
+	if positions[0] != 0 {
+		t.Errorf("positions[0] = %d, want 0", positions[0])
+	}
+	if positions[1] != 8 {
+		t.Errorf("positions[1] = %d, want 8", positions[1])
 	}
 }

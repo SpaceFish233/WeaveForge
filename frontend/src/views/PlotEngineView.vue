@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import {
   GenerateBranches, AnalyseBranch, MergeBranches, ListForeshadowings,
   GenerateDialogue, ReviseDialogue, ListCharacters, ListChapters, GetChapter,
@@ -125,9 +125,11 @@ async function handleReviseDialogue() {
   } catch (e) { console.error(e) } finally { reviseLoading.value = false }
 }
 
-loadForeshadows()
-loadDialogueChars()
-loadAllChapters()
+onMounted(() => {
+  loadForeshadows()
+  loadDialogueChars()
+  loadAllChapters()
+})
 </script>
 
 <template>

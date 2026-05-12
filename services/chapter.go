@@ -1,6 +1,8 @@
 package services
 
 import (
+	"fmt"
+
 	"weaveforge/models"
 
 	"github.com/google/uuid"
@@ -18,7 +20,9 @@ func NewChapterService(db *gorm.DB) *ChapterService {
 func (s *ChapterService) CreateChapter(title, content, volumeID string) (string, error) {
 	id := uuid.New().String()
 	var maxOrder int
-	s.db.Raw("SELECT COALESCE(MAX(sort_order), 0) FROM chapters").Scan(&maxOrder)
+	if err := s.db.Raw("SELECT COALESCE(MAX(sort_order), 0) FROM chapters").Scan(&maxOrder).Error; err != nil {
+		return "", fmt.Errorf("chapter: get max sort_order: %w", err)
+	}
 
 	chapter := models.Chapter{
 		ID:        id,
@@ -68,14 +72,16 @@ func (s *ChapterService) ListChapters() ([]models.ChapterSummary, error) {
 }
 
 func (s *ChapterService) ReorderChapters(chapterIDs []string) error {
-	for i, id := range chapterIDs {
-		if err := s.db.Model(&models.Chapter{}).
-			Where("id = ?", id).
-			Update("sort_order", i+1).Error; err != nil {
-			return err
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for i, id := range chapterIDs {
+			if err := tx.Model(&models.Chapter{}).
+				Where("id = ?", id).
+				Update("sort_order", i+1).Error; err != nil {
+				return err
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (s *ChapterService) UpdateChapterVolume(chapterID, volumeID string) error {

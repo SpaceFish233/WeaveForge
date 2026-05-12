@@ -17,10 +17,15 @@ const props = defineProps<{ chapterContent: string; chapterID: string | null }>(
 const emit = defineEmits<{
   (e: 'insert', text: string): void
   (e: 'contentUpdate', content: string): void
+  (e: 'flushAutoSave'): void
 }>()
 
 function handleTypoContentUpdate(content: string) {
   emit('contentUpdate', content)
+}
+
+function handleFlushAutoSave() {
+  emit('flushAutoSave')
 }
 
 const intensity = ref(5)
@@ -111,6 +116,7 @@ onBeforeUnmount(() => { EventsOff('coordinator:notification'); if (writeTimer) c
             :chapterContent="chapterContent"
             :chapterID="chapterID"
             @contentUpdate="handleTypoContentUpdate"
+            @flushAutoSave="handleFlushAutoSave"
           />
         </div>
       </div>

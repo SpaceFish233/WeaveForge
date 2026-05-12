@@ -35,6 +35,10 @@ function handleCancel() { editing.value = false }
 function handleAvatarUpload(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
+  if (file.size > 2 * 1024 * 1024) {
+    alert('头像文件大小不能超过 2MB')
+    return
+  }
   const reader = new FileReader()
   reader.onload = () => { form.value.avatar = reader.result as string }
   reader.readAsDataURL(file)

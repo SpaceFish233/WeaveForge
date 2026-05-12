@@ -151,7 +151,12 @@ func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
 
 	// Fire all checks concurrently
 	var wg sync.WaitGroup
-	ctx := context.Background()
+	c.ctxMu.RLock()
+	ctx := c.ctx
+	c.ctxMu.RUnlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	// a) Style deviation
 	if c.agents.Style != nil {

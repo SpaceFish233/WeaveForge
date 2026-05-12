@@ -30,14 +30,22 @@ var assets embed.FS
 
 func main() {
 	// Setup log file
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("Warning: cannot determine home directory: %v", err)
+		home = "."
+	}
 	logDir := filepath.Join(home, ".weaveforge")
-	os.MkdirAll(logDir, 0755)
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		log.Printf("Warning: cannot create log directory: %v", err)
+	}
 	logFile, err := os.OpenFile(filepath.Join(logDir, "weaveforge.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err == nil {
 		multi := io.MultiWriter(os.Stdout, logFile)
 		log.SetOutput(multi)
 		defer logFile.Close()
+	} else {
+		log.Printf("Warning: cannot open log file: %v", err)
 	}
 	log.Printf("WeaveForge starting...")
 
@@ -114,8 +122,9 @@ func main() {
 		Height: 900,
 		AssetServer: &assetserver.Options{Assets: assets},
 		BackgroundColour: &options.RGBA{R: 30, G: 30, B: 35, A: 1},
-		OnStartup: app.startup,
-		Bind: []interface{}{app},
+		OnStartup:  app.startup,
+		OnShutdown: app.shutdown,
+		Bind:       []interface{}{app},
 	}); err != nil {
 		log.Fatal(err)
 	}

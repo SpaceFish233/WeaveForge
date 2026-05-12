@@ -64,6 +64,18 @@ async function handleMarkForeshadow(text: string) {
   } catch (e) { console.error('save foreshadow:', e) }
 }
 
+// Flush pending auto-save immediately (called before typo correction)
+async function handleFlushAutoSave() {
+  if (saveTimer.value !== null) {
+    clearTimeout(saveTimer.value)
+    saveTimer.value = null
+    if (currentChapterId.value && currentContent.value) {
+      try { await UpdateChapter(currentChapterId.value, currentContent.value) }
+      catch (err) { console.error('Flush auto-save failed:', err) }
+    }
+  }
+}
+
 </script>
 
 <template>
@@ -93,6 +105,7 @@ async function handleMarkForeshadow(text: string) {
         :chapterID="currentChapterId"
         @insert="handleInsertText"
         @contentUpdate="handleTypoContentUpdate"
+        @flushAutoSave="handleFlushAutoSave"
       />
     </aside>
   </div>
