@@ -11,6 +11,13 @@ type Config struct {
 	LLM      LLMConfig      `json:"llm"`
 	VectorDB VectorDBConfig `json:"vector_db"`
 	Embedding EmbeddingConfig `json:"embedding"`
+	Stats    StatsConfig    `json:"stats"`
+}
+
+type StatsConfig struct {
+	DailyGoal      int `json:"daily_goal"`
+	WeeklyGoal     int `json:"weekly_goal"`
+	StreakWarnDays int `json:"streak_warn_days"`
 }
 
 type LLMConfig struct {
@@ -41,6 +48,7 @@ func defaults() *Config {
 			Port:   18635,
 		},
 		VectorDB: VectorDBConfig{},
+		Stats:    StatsConfig{},
 	}
 }
 

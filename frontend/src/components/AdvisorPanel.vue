@@ -2,10 +2,10 @@
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
   OnParagraphWritten, SetAssistantIntensity, GetAssistantIntensity, RecordNotificationAction,
+  GetOutlineNodeByChapter,
 } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 import ConsistencyCheck from './ConsistencyCheck.vue'
-import StylePanel from './StylePanel.vue'
 import TypoPanel from './TypoPanel.vue'
 
 interface Notification {
@@ -38,6 +38,17 @@ async function setIntensity(v: number) {
 const notifications = ref<Notification[]>([])
 const expandedId = ref<string | null>(null)
 
+// ─── Outline card ───
+const outlineNode = ref<{ title: string; summary: string; status: string } | null>(null)
+async function loadOutlineNode() {
+  if (!props.chapterID) { outlineNode.value = null; return }
+  try {
+    const node = await GetOutlineNodeByChapter(props.chapterID)
+    outlineNode.value = node && node.id ? { title: node.title, summary: node.summary, status: node.status } : null
+  } catch { outlineNode.value = null }
+}
+watch(() => props.chapterID, loadOutlineNode, { immediate: true })
+
 function handleNotification(n: Notification) {
   notifications.value.unshift(n)
   if (notifications.value.length > 20) notifications.value = notifications.value.slice(0, 20)
@@ -59,7 +70,6 @@ function toggleExpand(id: string) {
 }
 const agentMeta: Record<string, { icon: string; label: string }> = {
   consistency: { icon: '⚡', label: '设定校验' },
-  style: { icon: '✒', label: '风格分析' },
   foreshadow: { icon: '🔮', label: '伏笔检测' },
 }
 function agentMetaFor(a: string) { return agentMeta[a] || { icon: '📋', label: a } }
@@ -98,12 +108,6 @@ onBeforeUnmount(() => { EventsOff('coordinator:notification'); if (writeTimer) c
 
     <div class="tool-panels">
       <div class="tool-section">
-        <div class="tool-header">✒ 风格润色</div>
-        <div class="tool-body">
-          <StylePanel :chapterContent="chapterContent" />
-        </div>
-      </div>
-      <div class="tool-section">
         <div class="tool-header">⚡ 设定校验</div>
         <div class="tool-body">
           <ConsistencyCheck :chapterContent="chapterContent" />
@@ -120,6 +124,17 @@ onBeforeUnmount(() => { EventsOff('coordinator:notification'); if (writeTimer) c
           />
         </div>
       </div>
+    </div>
+
+    <!-- Outline card -->
+    <div v-if="outlineNode" class="outline-card">
+      <div class="outline-card-header">
+        <span class="outline-card-title">📋 当前大纲</span>
+        <span class="outline-status-dot" :style="{ background: outlineNode.status === 'completed' ? '#2ecc71' : outlineNode.status === 'in_progress' ? '#f39c12' : '#636e72' }"></span>
+        <span class="outline-node-name">{{ outlineNode.title }}</span>
+      </div>
+      <div v-if="outlineNode.summary" class="outline-card-body">{{ outlineNode.summary }}</div>
+      <div v-else class="outline-card-empty">暂无梗概</div>
     </div>
 
     <!-- Notification stream -->
@@ -164,13 +179,21 @@ onBeforeUnmount(() => { EventsOff('coordinator:notification'); if (writeTimer) c
 }
 .tool-body { background: #0d1117; }
 
+/* Outline card */
+.outline-card { flex-shrink: 0; padding: 10px 16px; border-bottom: 1px solid #21262d; background: #0d1117; }
+.outline-card-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.outline-card-title { font-size: 11px; font-weight: 600; color: #8b949e; }
+.outline-status-dot { width: 8px; height: 8px; border-radius: 50%; }
+.outline-node-name { font-size: 12px; font-weight: 600; color: #c9d1d9; }
+.outline-card-body { font-size: 11px; color: #8b949e; line-height: 1.4; max-height: 60px; overflow-y: auto; }
+.outline-card-empty { font-size: 11px; color: #484f58; font-style: italic; }
+
 /* Notification stream */
 .notif-stream { flex: 1; overflow-y: auto; padding: 8px; min-height: 100px; }
 .notif-card { padding: 10px; margin-bottom: 6px; border: 1px solid #21262d; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
 .notif-card:hover { background: #1c2128; }
 .notif-card.expanded { background: #1c2128; }
 .notif-card.consistency { border-left: 3px solid #d29922; }
-.notif-card.style { border-left: 3px solid #58a6ff; }
 .notif-card.foreshadow { border-left: 3px solid #bc8cff; }
 .notif-card.warning { border-left-color: #f85149 !important; }
 .notif-card.success { border-left-color: #3fb950 !important; }

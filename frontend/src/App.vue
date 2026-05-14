@@ -30,13 +30,6 @@ function isActive(path: string) {
         </button>
         <button
           class="nav-link"
-          :class="{ active: isActive('/api') }"
-          @click="router.push('/api')"
-        >
-          🔑 API 设置
-        </button>
-        <button
-          class="nav-link"
           :class="{ active: isActive('/foreshadow') }"
           @click="router.push('/foreshadow')"
         >
@@ -55,6 +48,35 @@ function isActive(path: string) {
           @click="router.push('/characters')"
         >
           👥 角色管理
+        </button>
+        <button
+          class="nav-link"
+          :class="{ active: isActive('/timeline') }"
+          @click="router.push('/timeline')"
+        >
+          🕐 时间线
+        </button>
+        <button
+          class="nav-link"
+          :class="{ active: isActive('/outline') }"
+          @click="router.push('/outline')"
+        >
+          📋 大纲规划
+        </button>
+        <button
+          class="nav-link"
+          :class="{ active: isActive('/api') }"
+          @click="router.push('/api')"
+        >
+          🔑 API 设置
+        </button>
+        <div class="nav-spacer"></div>
+        <button
+          class="nav-link nav-stats"
+          :class="{ active: isActive('/stats') }"
+          @click="router.push('/stats')"
+        >
+          📊 写作统计
         </button>
       </div>
     </nav>
@@ -93,6 +115,17 @@ function isActive(path: string) {
 .nav-links {
   display: flex;
   gap: 4px;
+  flex: 1;
+}
+
+.nav-spacer {
+  flex: 1;
+}
+
+.nav-stats {
+  border-left: 1px solid #21262d;
+  margin-left: 4px;
+  padding-left: 14px;
 }
 
 .nav-link {

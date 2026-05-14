@@ -11,8 +11,12 @@ import (
 	"weaveforge/internal/agent/character"
 	"weaveforge/internal/agent/foreshadow"
 	"weaveforge/internal/agent/plotengine"
+	"weaveforge/internal/agent/outline"
+	"weaveforge/internal/agent/relationship"
 	"weaveforge/internal/agent/setting"
+	"weaveforge/internal/agent/stats"
 	"weaveforge/internal/agent/style"
+	"weaveforge/internal/agent/timeline"
 	"weaveforge/internal/agent/typo"
 	"weaveforge/internal/config"
 	"weaveforge/internal/coordinator"
@@ -29,20 +33,25 @@ type App struct {
 	ctx              context.Context
 	chapter          *services.ChapterService
 	volume           *services.VolumeService
+	search           *services.SearchService
 	characterAgent   *character.Agent
 	settingAgent     *setting.Agent
 	styleAgent       *style.Agent
 	foreshadowAgent  *foreshadow.Agent
 	plotEngine       *plotengine.Agent
+	relationshipAgent *relationship.Agent
+	outlineAgent     *outline.Agent
+	timelineAgent    *timeline.Agent
 	typoAgent        *typo.Agent
+	statsAgent       *stats.Agent
 	coordinator      *coordinator.Coordinator
 	appConfig        *config.Config
 	configMu         sync.RWMutex
 	embedder         vectordb.Embedder
 }
 
-func NewApp(cs *services.ChapterService, vs *services.VolumeService, ca *character.Agent, sa *setting.Agent, sta *style.Agent, fa *foreshadow.Agent, pe *plotengine.Agent, ta *typo.Agent, co *coordinator.Coordinator, cfg *config.Config, emb vectordb.Embedder) *App {
-	return &App{chapter: cs, volume: vs, characterAgent: ca, settingAgent: sa, styleAgent: sta, foreshadowAgent: fa, plotEngine: pe, typoAgent: ta, coordinator: co, appConfig: cfg, embedder: emb}
+func NewApp(cs *services.ChapterService, vs *services.VolumeService, ss *services.SearchService, ca *character.Agent, sa *setting.Agent, sta *style.Agent, fa *foreshadow.Agent, pe *plotengine.Agent, rla *relationship.Agent, ola *outline.Agent, tla *timeline.Agent, ta *typo.Agent, stAgent *stats.Agent, co *coordinator.Coordinator, cfg *config.Config, emb vectordb.Embedder) *App {
+	return &App{chapter: cs, volume: vs, search: ss, characterAgent: ca, settingAgent: sa, styleAgent: sta, foreshadowAgent: fa, plotEngine: pe, relationshipAgent: rla, outlineAgent: ola, timelineAgent: tla, typoAgent: ta, statsAgent: stAgent, coordinator: co, appConfig: cfg, embedder: emb}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -61,7 +70,25 @@ func (a *App) shutdown(_ context.Context) {
 // ─── Chapter API ────────────────────────────────────────────────────
 
 func (a *App) CreateChapter(title, content, volumeID string) (string, error) { return a.chapter.CreateChapter(title, content, volumeID) }
-func (a *App) UpdateChapter(chapterID, content string) error                 { return a.chapter.UpdateChapter(chapterID, content) }
+func (a *App) UpdateChapter(chapterID, content string) error {
+	// Get old content for stats tracking
+	oldChapter, err := a.chapter.GetChapter(chapterID)
+	oldContent := ""
+	if err == nil {
+		oldContent = oldChapter.Content
+	}
+
+	if err := a.chapter.UpdateChapter(chapterID, content); err != nil {
+		return err
+	}
+
+	// Update daily stats in background (non-blocking)
+	if a.statsAgent != nil {
+		go a.statsAgent.UpdateDailyStats(a.ctx, chapterID, oldContent, content)
+	}
+
+	return nil
+}
 func (a *App) UpdateChapterTitle(chapterID, title string) error              { return a.chapter.UpdateChapterTitle(chapterID, title) }
 func (a *App) UpdateChapterVolume(chapterID, volumeID string) error          { return a.chapter.UpdateChapterVolume(chapterID, volumeID) }
 func (a *App) DeleteChapter(chapterID string) error                          { return a.chapter.DeleteChapter(chapterID) }
@@ -105,14 +132,11 @@ func (a *App) DeleteSetting(id string) error                               { ret
 func (a *App) DetectSettings(chapterContent string, caseSensitive, wholeWord bool) ([]setting.SettingHit, error) { return a.settingAgent.DetectSettingsInChapter(chapterContent, caseSensitive, wholeWord) }
 func (a *App) ValidateSetting(settingID, chapterContent string) (*setting.ConflictResult, error) { return a.settingAgent.ValidateSettingConflict(settingID, chapterContent) }
 
-// ─── Style Agent API ────────────────────────────────────────────────
+// ─── Polish API ─────────────────────────────────────────────────────
 
-func (a *App) LearnStyle(name string, chapterIDs []string) (string, error)        { return a.styleAgent.LearnStyle(a.ctx, name, chapterIDs) }
-func (a *App) ListStyleProfiles() ([]style.StyleProfileSummary, error)            { return a.styleAgent.ListProfiles(a.ctx) }
-func (a *App) GetStyleProfile(id string) (*models.StyleProfile, error)            { return a.styleAgent.GetProfile(a.ctx, id) }
-func (a *App) DeleteStyleProfile(id string) error                                  { return a.styleAgent.DeleteProfile(a.ctx, id) }
-func (a *App) PolishText(text, profileID, intensity string) (string, error)       { return a.styleAgent.PolishText(a.ctx, text, profileID, intensity) }
-func (a *App) AnalyzeStyle(text, profileID string) (string, error)                { return a.styleAgent.AnalyzeStyle(a.ctx, text, profileID) }
+func (a *App) PolishWithInstruction(text, instruction, profileID string) (string, error) {
+	return a.styleAgent.PolishWithInstruction(a.ctx, text, instruction, profileID)
+}
 
 // ─── Foreshadow Agent API ───────────────────────────────────────────
 
@@ -134,9 +158,113 @@ func (a *App) MergeBranches(selectedPoints []string) (string, error) { return a.
 func (a *App) GenerateDialogue(charactersJSON, plotSummary string) (string, error) { return a.plotEngine.GenerateDialogue(a.ctx, charactersJSON, plotSummary) }
 func (a *App) ReviseDialogue(originalDialogue, revisionPrompt string) (string, error) { return a.plotEngine.ReviseDialogue(a.ctx, originalDialogue, revisionPrompt) }
 
+// ─── Relationship API ───────────────────────────────────────────────
+
+func (a *App) GetRelationships(filterChapterID string) ([]relationship.RelationshipSummary, error) { return a.relationshipAgent.GetRelationships(a.ctx, filterChapterID) }
+func (a *App) CreateRelationship(charAID, charBID, relType, startChapterID, note string) (string, error) { return a.relationshipAgent.CreateRelationship(a.ctx, charAID, charBID, relType, startChapterID, note) }
+func (a *App) UpdateRelationship(id, relType, startChapterID, endChapterID, note string) error { return a.relationshipAgent.UpdateRelationship(a.ctx, id, relType, startChapterID, endChapterID, note) }
+func (a *App) DeleteRelationship(id string) error { return a.relationshipAgent.DeleteRelationship(a.ctx, id) }
+func (a *App) GetRelationshipGraph(filterChapterID string) (*relationship.GraphData, error) { return a.relationshipAgent.GetGraphData(a.ctx, filterChapterID) }
+func (a *App) SaveGraphPositions(positions []relationship.NodePosition) error { return a.relationshipAgent.SaveNodePositions(a.ctx, positions) }
+
+// ─── Search API ─────────────────────────────────────────────────────
+
+func (a *App) SearchChapters(keyword, scope string, caseSensitive, wholeWord, useRegex bool) ([]services.SearchResult, error) {
+	// Get current chapter ID and volume ID from context if needed
+	var currentChapterID, currentVolumeID string
+	// For "volume" scope, we need the current chapter's volume
+	if scope == "volume" {
+		// The frontend should pass the current chapter context; for now, we'll use a simple approach
+		// The search service will handle the scope filtering
+	}
+	return a.search.SearchAll(keyword, scope, caseSensitive, wholeWord, useRegex, currentChapterID, currentVolumeID)
+}
+
+func (a *App) ReplaceInChapters(replacements []services.ReplaceItem, replacement string) (int, error) {
+	return a.search.BatchReplace(replacements, replacement)
+}
+
+// ─── Outline API ────────────────────────────────────────────────────
+
+func (a *App) GetOutlineTree() ([]outline.OutlineTreeNode, error) { return a.outlineAgent.GetTree(a.ctx) }
+func (a *App) CreateOutlineNode(parentID, title, summary string) (string, error) { return a.outlineAgent.CreateNode(a.ctx, parentID, title, summary) }
+func (a *App) UpdateOutlineNode(id, title, summary, status string) error { return a.outlineAgent.UpdateNode(a.ctx, id, title, summary, status) }
+func (a *App) DeleteOutlineNode(id string) error { return a.outlineAgent.DeleteNode(a.ctx, id) }
+func (a *App) MoveOutlineNode(id, newParentID string, newSortOrder int) error { return a.outlineAgent.MoveNode(a.ctx, id, newParentID, newSortOrder) }
+func (a *App) BindOutlineChapter(nodeID, chapterID string) error { return a.outlineAgent.BindChapter(a.ctx, nodeID, chapterID) }
+func (a *App) UnbindOutlineChapter(nodeID string) error { return a.outlineAgent.UnbindChapter(a.ctx, nodeID) }
+func (a *App) ImportOutlineFromChapters() error { return a.outlineAgent.ImportFromChapters(a.ctx) }
+func (a *App) ExportOutlineMarkdown() (string, error) { return a.outlineAgent.ExportMarkdown(a.ctx) }
+func (a *App) GetOutlineNodeByChapter(chapterID string) (*outline.OutlineTreeNode, error) { return a.outlineAgent.GetNodeByChapterID(a.ctx, chapterID) }
+
+// ─── Timeline API ───────────────────────────────────────────────────
+
+func (a *App) GetTimeBase() (*models.TimeBase, error) { return a.timelineAgent.GetTimeBase(a.ctx) }
+func (a *App) SaveTimeBase(description, unit string) (*models.TimeBase, error) { return a.timelineAgent.SaveTimeBase(a.ctx, description, unit) }
+func (a *App) ListTimelineNodes() ([]timeline.NodeWithEvents, error) { return a.timelineAgent.ListNodes(a.ctx) }
+func (a *App) GetTimelineNode(id string) (*timeline.NodeWithEvents, error) { return a.timelineAgent.GetNode(a.ctx, id) }
+func (a *App) CreateTimelineNode(offsetDays float64, label, description string) (string, error) { return a.timelineAgent.CreateNode(a.ctx, offsetDays, label, description) }
+func (a *App) UpdateTimelineNode(id string, offsetDays float64, label, description string) error { return a.timelineAgent.UpdateNode(a.ctx, id, offsetDays, label, description) }
+func (a *App) DeleteTimelineNode(id string) error { return a.timelineAgent.DeleteNode(a.ctx, id) }
+func (a *App) CreateTimelineEvent(nodeID, title, summary string, chapterIDs []string, isGradual bool, eventName, rawTimeExpr string) (string, error) { return a.timelineAgent.CreateEvent(a.ctx, nodeID, title, summary, chapterIDs, isGradual, eventName, rawTimeExpr) }
+func (a *App) UpdateTimelineEvent(id, title, summary string, chapterIDs []string, isGradual bool, eventName string) error { return a.timelineAgent.UpdateEvent(a.ctx, id, title, summary, chapterIDs, isGradual, eventName) }
+func (a *App) DeleteTimelineEvent(id string) error { return a.timelineAgent.DeleteEvent(a.ctx, id) }
+func (a *App) ScanChaptersForTimeline(chapterIDs []string) (*timeline.ScanResult, error) { return a.timelineAgent.ScanChapters(a.ctx, chapterIDs) }
+
 // ─── Typo Detection API ───────────────────────────────────────────────
 
 func (a *App) DetectTypos(chapterContent string) ([]typo.TypoSuggestion, error) { return a.typoAgent.DetectTypos(a.ctx, chapterContent) }
+
+// ─── Writing Stats API ───────────────────────────────────────────────
+
+func (a *App) GetWritingStats(days int) ([]stats.DailyStatsRow, error) {
+	return a.statsAgent.GetStats(a.ctx, days)
+}
+
+func (a *App) GetWritingStats365() ([]stats.DailyStatsRow, error) {
+	return a.statsAgent.GetStats365(a.ctx)
+}
+
+func (a *App) GetTodayWritingStats() (*stats.DailyStatsRow, error) {
+	return a.statsAgent.GetTodayStats(a.ctx)
+}
+
+func (a *App) GetWeekWritingStats() (int, error) {
+	return a.statsAgent.GetWeekStats(a.ctx)
+}
+
+func (a *App) GetWritingStreak() (int, error) {
+	return a.statsAgent.GetStreak(a.ctx)
+}
+
+func (a *App) SetWritingGoals(dailyGoal, weeklyGoal int) error {
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	a.appConfig.Stats.DailyGoal = dailyGoal
+	a.appConfig.Stats.WeeklyGoal = weeklyGoal
+	return config.Save(a.appConfig)
+}
+
+func (a *App) GetWritingGoals() *stats.GoalSettings {
+	a.configMu.RLock()
+	defer a.configMu.RUnlock()
+	return &stats.GoalSettings{
+		DailyGoal:      a.appConfig.Stats.DailyGoal,
+		WeeklyGoal:     a.appConfig.Stats.WeeklyGoal,
+		StreakWarnDays: a.appConfig.Stats.StreakWarnDays,
+	}
+}
+
+func (a *App) UpdateWritingGoalSettings(streakWarnDays int) error {
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	a.appConfig.Stats.StreakWarnDays = streakWarnDays
+	return config.Save(a.appConfig)
+}
+
+func (a *App) ExportStatsCSV() (string, error) {
+	return a.statsAgent.ExportCSV(a.ctx)
+}
 
 // ─── Config API ─────────────────────────────────────────────────────
 

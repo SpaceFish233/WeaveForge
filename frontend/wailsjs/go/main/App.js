@@ -6,12 +6,12 @@ export function AnalyseBranch(arg1) {
   return window['go']['main']['App']['AnalyseBranch'](arg1);
 }
 
-export function AnalyzeStyle(arg1, arg2) {
-  return window['go']['main']['App']['AnalyzeStyle'](arg1, arg2);
-}
-
 export function AutoDetectForeshadowing(arg1) {
   return window['go']['main']['App']['AutoDetectForeshadowing'](arg1);
+}
+
+export function BindOutlineChapter(arg1, arg2) {
+  return window['go']['main']['App']['BindOutlineChapter'](arg1, arg2);
 }
 
 export function ConfirmForeshadowing(arg1, arg2) {
@@ -24,6 +24,22 @@ export function CreateChapter(arg1, arg2, arg3) {
 
 export function CreateCharacter(arg1) {
   return window['go']['main']['App']['CreateCharacter'](arg1);
+}
+
+export function CreateOutlineNode(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CreateOutlineNode'](arg1, arg2, arg3);
+}
+
+export function CreateRelationship(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['CreateRelationship'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function CreateTimelineEvent(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['CreateTimelineEvent'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+}
+
+export function CreateTimelineNode(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CreateTimelineNode'](arg1, arg2, arg3);
 }
 
 export function CreateVolume(arg1) {
@@ -42,12 +58,24 @@ export function DeleteForeshadowing(arg1) {
   return window['go']['main']['App']['DeleteForeshadowing'](arg1);
 }
 
+export function DeleteOutlineNode(arg1) {
+  return window['go']['main']['App']['DeleteOutlineNode'](arg1);
+}
+
+export function DeleteRelationship(arg1) {
+  return window['go']['main']['App']['DeleteRelationship'](arg1);
+}
+
 export function DeleteSetting(arg1) {
   return window['go']['main']['App']['DeleteSetting'](arg1);
 }
 
-export function DeleteStyleProfile(arg1) {
-  return window['go']['main']['App']['DeleteStyleProfile'](arg1);
+export function DeleteTimelineEvent(arg1) {
+  return window['go']['main']['App']['DeleteTimelineEvent'](arg1);
+}
+
+export function DeleteTimelineNode(arg1) {
+  return window['go']['main']['App']['DeleteTimelineNode'](arg1);
 }
 
 export function DeleteVolume(arg1) {
@@ -60,6 +88,14 @@ export function DetectSettings(arg1, arg2, arg3) {
 
 export function DetectTypos(arg1) {
   return window['go']['main']['App']['DetectTypos'](arg1);
+}
+
+export function ExportOutlineMarkdown() {
+  return window['go']['main']['App']['ExportOutlineMarkdown']();
+}
+
+export function ExportStatsCSV() {
+  return window['go']['main']['App']['ExportStatsCSV']();
 }
 
 export function GenerateBranches(arg1) {
@@ -98,6 +134,22 @@ export function GetForeshadowing(arg1) {
   return window['go']['main']['App']['GetForeshadowing'](arg1);
 }
 
+export function GetOutlineNodeByChapter(arg1) {
+  return window['go']['main']['App']['GetOutlineNodeByChapter'](arg1);
+}
+
+export function GetOutlineTree() {
+  return window['go']['main']['App']['GetOutlineTree']();
+}
+
+export function GetRelationshipGraph(arg1) {
+  return window['go']['main']['App']['GetRelationshipGraph'](arg1);
+}
+
+export function GetRelationships(arg1) {
+  return window['go']['main']['App']['GetRelationships'](arg1);
+}
+
 export function GetSessionHistory() {
   return window['go']['main']['App']['GetSessionHistory']();
 }
@@ -106,8 +158,36 @@ export function GetSetting(arg1) {
   return window['go']['main']['App']['GetSetting'](arg1);
 }
 
-export function GetStyleProfile(arg1) {
-  return window['go']['main']['App']['GetStyleProfile'](arg1);
+export function GetTimeBase() {
+  return window['go']['main']['App']['GetTimeBase']();
+}
+
+export function GetTimelineNode(arg1) {
+  return window['go']['main']['App']['GetTimelineNode'](arg1);
+}
+
+export function GetTodayWritingStats() {
+  return window['go']['main']['App']['GetTodayWritingStats']();
+}
+
+export function GetWeekWritingStats() {
+  return window['go']['main']['App']['GetWeekWritingStats']();
+}
+
+export function GetWritingGoals() {
+  return window['go']['main']['App']['GetWritingGoals']();
+}
+
+export function GetWritingStats(arg1) {
+  return window['go']['main']['App']['GetWritingStats'](arg1);
+}
+
+export function GetWritingStats365() {
+  return window['go']['main']['App']['GetWritingStats365']();
+}
+
+export function GetWritingStreak() {
+  return window['go']['main']['App']['GetWritingStreak']();
 }
 
 export function ImportContent(arg1, arg2) {
@@ -118,8 +198,8 @@ export function ImportDocument(arg1) {
   return window['go']['main']['App']['ImportDocument'](arg1);
 }
 
-export function LearnStyle(arg1, arg2) {
-  return window['go']['main']['App']['LearnStyle'](arg1, arg2);
+export function ImportOutlineFromChapters() {
+  return window['go']['main']['App']['ImportOutlineFromChapters']();
 }
 
 export function ListChapters() {
@@ -138,8 +218,8 @@ export function ListSettings() {
   return window['go']['main']['App']['ListSettings']();
 }
 
-export function ListStyleProfiles() {
-  return window['go']['main']['App']['ListStyleProfiles']();
+export function ListTimelineNodes() {
+  return window['go']['main']['App']['ListTimelineNodes']();
 }
 
 export function ListVolumes() {
@@ -150,12 +230,16 @@ export function MergeBranches(arg1) {
   return window['go']['main']['App']['MergeBranches'](arg1);
 }
 
+export function MoveOutlineNode(arg1, arg2, arg3) {
+  return window['go']['main']['App']['MoveOutlineNode'](arg1, arg2, arg3);
+}
+
 export function OnParagraphWritten(arg1, arg2) {
   return window['go']['main']['App']['OnParagraphWritten'](arg1, arg2);
 }
 
-export function PolishText(arg1, arg2, arg3) {
-  return window['go']['main']['App']['PolishText'](arg1, arg2, arg3);
+export function PolishWithInstruction(arg1, arg2, arg3) {
+  return window['go']['main']['App']['PolishWithInstruction'](arg1, arg2, arg3);
 }
 
 export function RecordNotificationAction(arg1, arg2) {
@@ -166,12 +250,32 @@ export function ReorderChapters(arg1) {
   return window['go']['main']['App']['ReorderChapters'](arg1);
 }
 
+export function ReplaceInChapters(arg1, arg2) {
+  return window['go']['main']['App']['ReplaceInChapters'](arg1, arg2);
+}
+
 export function ReviseDialogue(arg1, arg2) {
   return window['go']['main']['App']['ReviseDialogue'](arg1, arg2);
 }
 
 export function SaveForeshadowing(arg1, arg2) {
   return window['go']['main']['App']['SaveForeshadowing'](arg1, arg2);
+}
+
+export function SaveGraphPositions(arg1) {
+  return window['go']['main']['App']['SaveGraphPositions'](arg1);
+}
+
+export function SaveTimeBase(arg1, arg2) {
+  return window['go']['main']['App']['SaveTimeBase'](arg1, arg2);
+}
+
+export function ScanChaptersForTimeline(arg1) {
+  return window['go']['main']['App']['ScanChaptersForTimeline'](arg1);
+}
+
+export function SearchChapters(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['SearchChapters'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function SelectExeFile() {
@@ -184,6 +288,10 @@ export function SelectGGUFFile() {
 
 export function SetAssistantIntensity(arg1) {
   return window['go']['main']['App']['SetAssistantIntensity'](arg1);
+}
+
+export function SetWritingGoals(arg1, arg2) {
+  return window['go']['main']['App']['SetWritingGoals'](arg1, arg2);
 }
 
 export function SuggestReveal(arg1) {
@@ -200,6 +308,10 @@ export function TestEmbeddingLocal() {
 
 export function TestLLMConnection(arg1, arg2) {
   return window['go']['main']['App']['TestLLMConnection'](arg1, arg2);
+}
+
+export function UnbindOutlineChapter(arg1) {
+  return window['go']['main']['App']['UnbindOutlineChapter'](arg1);
 }
 
 export function UpdateChapter(arg1, arg2) {
@@ -226,12 +338,32 @@ export function UpdateForeshadowing(arg1, arg2) {
   return window['go']['main']['App']['UpdateForeshadowing'](arg1, arg2);
 }
 
+export function UpdateOutlineNode(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UpdateOutlineNode'](arg1, arg2, arg3, arg4);
+}
+
+export function UpdateRelationship(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['UpdateRelationship'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function UpdateSetting(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['UpdateSetting'](arg1, arg2, arg3, arg4);
 }
 
+export function UpdateTimelineEvent(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['UpdateTimelineEvent'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function UpdateTimelineNode(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UpdateTimelineNode'](arg1, arg2, arg3, arg4);
+}
+
 export function UpdateVolume(arg1, arg2) {
   return window['go']['main']['App']['UpdateVolume'](arg1, arg2);
+}
+
+export function UpdateWritingGoalSettings(arg1) {
+  return window['go']['main']['App']['UpdateWritingGoalSettings'](arg1);
 }
 
 export function UploadWorldSetting(arg1, arg2, arg3) {

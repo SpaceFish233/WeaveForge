@@ -130,6 +130,57 @@ func (a *Agent) PolishText(ctx context.Context, text, profileID, intensity strin
 	return strings.TrimSpace(resp), nil
 }
 
+func (a *Agent) PolishWithInstruction(ctx context.Context, text, instruction, profileID string) (string, error) {
+	if strings.TrimSpace(text) == "" {
+		return "", fmt.Errorf("style: empty text")
+	}
+
+	var sb strings.Builder
+	sb.WriteString("请根据以下要求对文本进行润色。\n\n")
+
+	// If a style profile is provided, include its context
+	if profileID != "" {
+		var profile models.StyleProfile
+		if err := a.db.WithContext(ctx).First(&profile, "id = ?", profileID).Error; err == nil {
+			sb.WriteString("【参考风格】\n")
+			sb.WriteString(profile.Description)
+			sb.WriteString("\n\n")
+			var samples []string
+			json.Unmarshal([]byte(profile.Samples), &samples)
+			if len(samples) > 0 {
+				sb.WriteString("【风格样本】\n")
+				for i, s := range samples {
+					if i >= 2 {
+						break
+					}
+					trimmed := strings.TrimSpace(s)
+					if len([]rune(trimmed)) > 200 {
+						trimmed = string([]rune(trimmed)[:200]) + "…"
+					}
+					sb.WriteString(trimmed)
+					sb.WriteString("\n")
+				}
+				sb.WriteString("\n")
+			}
+		}
+	}
+
+	sb.WriteString("【润色要求】\n")
+	sb.WriteString(instruction)
+	sb.WriteString("\n\n【原文】\n")
+	sb.WriteString(text)
+	sb.WriteString("\n\n请直接输出润色后的文本，不要添加任何说明、前缀或后缀。")
+
+	resp, err := a.llm.ChatCompletion(ctx, []llm.Message{
+		{Role: "system", Content: "你是一位专业的网络小说润色助手。按要求对文本进行润色，只输出润色后的结果，不要添加任何说明。"},
+		{Role: "user", Content: sb.String()},
+	}, a.chatModel, llm.ChatOption{Temperature: 0.3, MaxTokens: 4096})
+	if err != nil {
+		return "", fmt.Errorf("style: polish llm: %w", err)
+	}
+	return strings.TrimSpace(resp), nil
+}
+
 func (a *Agent) AnalyzeStyle(ctx context.Context, text, profileID string) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		return "", fmt.Errorf("style: empty text")

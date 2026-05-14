@@ -10,7 +10,6 @@ import (
 
 	"weaveforge/internal/agent/foreshadow"
 	"weaveforge/internal/agent/setting"
-	"weaveforge/internal/agent/style"
 
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -19,7 +18,6 @@ import (
 // AgentHolders groups all agent references for the coordinator.
 type AgentHolders struct {
 	Setting    *setting.Agent
-	Style      *style.Agent
 	Foreshadow *foreshadow.Agent
 }
 
@@ -158,15 +156,6 @@ func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
 		ctx = context.Background()
 	}
 
-	// a) Style deviation
-	if c.agents.Style != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c.checkStyleDeviation(ctx, paragraphText, threshold)
-		}()
-	}
-
 	// b) Foreshadow detection
 	if c.agents.Foreshadow != nil {
 		wg.Add(1)
@@ -177,23 +166,6 @@ func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
 	}
 
 	wg.Wait()
-}
-
-func (c *Coordinator) checkStyleDeviation(ctx context.Context, text string, threshold float64) {
-	if c.intensity.Load() < 8 {
-		return
-	}
-	profiles, _ := c.agents.Style.ListProfiles(ctx)
-	if len(profiles) > 0 {
-		c.notifCh <- Notification{
-			ID:       uuid.New().String(),
-			Agent:    "style",
-			Title:    fmt.Sprintf("已学习 %d 个风格档案", len(profiles)),
-			Content:  "继续写作或前往风格润色面板手动润色文本。",
-			Severity: "info",
-			Action:   "dismiss",
-		}
-	}
 }
 
 func (c *Coordinator) detectForeshadow(ctx context.Context, chapterID, text string, threshold float64) {

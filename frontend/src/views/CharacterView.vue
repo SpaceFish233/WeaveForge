@@ -2,11 +2,14 @@
 import { ref, onMounted } from 'vue'
 import { ListCharacters, CreateCharacter, UpdateCharacter, GetCharacter, DeleteCharacter } from '../../wailsjs/go/main/App'
 import { models } from '../../wailsjs/go/models'
+import RelationshipGraph from '../components/RelationshipGraph.vue'
 
 type Character = models.Character
 interface CharSummary { id: string; name: string; gender: string; race: string; role: string; personality: string; status: string; tags: string; avatar: string; created_at: string }
 
 const chars = ref<CharSummary[]>([])
+const activeTab = ref<'list' | 'graph'>('list')
+const graphRef = ref<InstanceType<typeof RelationshipGraph> | null>(null)
 const editing = ref(false)
 const avatarInput = ref<HTMLInputElement | null>(null)
 const form = ref<Character>(new models.Character({ id: '', name: '', gender: '', race: '', personality: '', description: '', first_chapter: '', tags: '[]', avatar: '', role: '配角', status: 'active' }))
@@ -56,10 +59,19 @@ onMounted(load)
 <template>
   <div class="char-page">
     <div class="page-header">
-      <h2>角色管理</h2>
-      <button class="btn-primary" @click="handleNew">＋ 新建角色</button>
+      <div class="header-left">
+        <h2>角色管理</h2>
+        <div class="tab-bar">
+          <button class="tab-btn" :class="{ active: activeTab === 'list' }" @click="activeTab = 'list'">👥 角色列表</button>
+          <button class="tab-btn" :class="{ active: activeTab === 'graph' }" @click="activeTab = 'graph'">🕸 关系图谱</button>
+        </div>
+      </div>
+      <button v-if="activeTab === 'list'" class="btn-primary" @click="handleNew">＋ 新建角色</button>
+      <button v-else class="btn-primary" @click="graphRef?.openCreateModal()">＋ 添加关系</button>
     </div>
 
+    <!-- List tab -->
+    <div v-if="activeTab === 'list'" class="tab-content">
     <div v-if="editing" class="edit-panel">
       <h3>{{ form.id ? '编辑角色' : '新建角色' }}</h3>
       <div class="avatar-row">
@@ -119,13 +131,27 @@ onMounted(load)
       </div>
       <div v-if="chars.length === 0" class="empty">暂无角色，点击右上角新建</div>
     </div>
+    </div>
+
+    <!-- Graph tab -->
+    <div v-if="activeTab === 'graph'" class="tab-content graph-tab">
+      <RelationshipGraph ref="graphRef" />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.char-page { height: 100%; overflow-y: auto; padding: 24px; background: #0d1117; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.char-page { height: 100%; display: flex; flex-direction: column; background: #0d1117; }
+.page-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; flex-shrink: 0; }
+.header-left { display: flex; align-items: center; gap: 16px; }
 .page-header h2 { margin: 0; font-size: 18px; font-weight: 700; color: #f0f6fc; }
+.tab-bar { display: flex; gap: 2px; background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 2px; }
+.tab-btn { padding: 6px 14px; border: none; background: transparent; color: #8b949e; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; font-family: inherit; transition: all 0.15s; }
+.tab-btn:hover { color: #c9d1d9; background: #1c2128; }
+.tab-btn.active { color: #c9d1d9; background: #1f2937; }
+.tab-content { flex: 1; overflow: hidden; }
+.tab-content:not(.graph-tab) { overflow-y: auto; padding: 0 24px 24px; }
+.graph-tab { display: flex; flex-direction: column; }
 .btn-primary { padding: 8px 16px; background: #238636; color: #fff; border: 1px solid rgba(240,246,252,0.1); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
 .btn-primary:hover { background: #2ea043; }
 .btn-secondary { padding: 8px 16px; background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; cursor: pointer; font-size: 13px; }

@@ -1,13 +1,47 @@
 <script lang="ts" setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import ChapterTree from '../components/ChapterTree.vue'
 import EditorPanel from '../components/EditorPanel.vue'
 import AdvisorPanel from '../components/AdvisorPanel.vue'
+import PolishModal from '../components/PolishModal.vue'
+import SearchBar from '../components/SearchBar.vue'
 import { GetChapter, UpdateChapter, SaveForeshadowing } from '../../wailsjs/go/main/App'
+
+const route = useRoute()
 
 const currentChapterId = ref<string | null>(null)
 const currentContent = ref('')
+const currentVolumeId = ref('')
 const saveTimer = ref<number | null>(null)
+const editorRef = ref<InstanceType<typeof EditorPanel> | null>(null)
+
+// ─── Polish state ───
+const polishVisible = ref(false)
+const polishText = ref('')
+const polishFrom = ref(0)
+const polishTo = ref(0)
+const pendingReplacement = ref<{ text: string; from: number; to: number } | null>(null)
+
+function handlePolish(text: string, from: number, to: number) {
+  polishText.value = text
+  polishFrom.value = from
+  polishTo.value = to
+  polishVisible.value = true
+}
+
+function handlePolishReplace(newText: string, from: number, to: number) {
+  pendingReplacement.value = { text: newText, from, to }
+  polishVisible.value = false
+}
+
+function handlePolishClose() {
+  polishVisible.value = false
+}
+
+function handleReplacementDone() {
+  pendingReplacement.value = null
+}
 
 async function handleSelectChapter(id: string) {
   if (saveTimer.value !== null) { clearTimeout(saveTimer.value); saveTimer.value = null }
@@ -20,6 +54,7 @@ async function handleSelectChapter(id: string) {
     const chapter = await GetChapter(id)
     if (currentChapterId.value === id) {
       currentContent.value = chapter.content || ''
+      currentVolumeId.value = chapter.volume_id || ''
     }
   } catch (err) {
     console.error('Failed to load chapter:', err)
@@ -76,6 +111,31 @@ async function handleFlushAutoSave() {
   }
 }
 
+// Auto-select chapter from query parameter (e.g. from timeline page)
+onMounted(() => {
+  const chapterId = route.query.chapter as string
+  if (chapterId) {
+    handleSelectChapter(chapterId)
+  }
+})
+
+// ─── Search integration ───
+function handleSearchSwitchChapter(chapterId: string) {
+  handleSelectChapter(chapterId)
+}
+
+function handleSearchHighlight(results: { offset: number; length: number }[], currentIndex: number) {
+  editorRef.value?.setSearchHighlights(results, currentIndex)
+}
+
+function handleSearchClearHighlights() {
+  editorRef.value?.clearSearchHighlights()
+}
+
+function handleSearchScrollToOffset(offset: number) {
+  editorRef.value?.scrollToOffset(offset)
+}
+
 </script>
 
 <template>
@@ -86,11 +146,15 @@ async function handleFlushAutoSave() {
     <main class="panel-center">
       <EditorPanel
         v-if="currentChapterId"
+        ref="editorRef"
         :key="currentChapterId"
         :content="currentContent"
         :chapterId="currentChapterId"
+        :pendingReplacement="pendingReplacement"
         @update:content="handleContentUpdate"
         @markForeshadow="handleMarkForeshadow"
+        @polish="handlePolish"
+        @replacementDone="handleReplacementDone"
       />
       <div v-else class="empty-state">
         <div class="empty-content">
@@ -110,6 +174,23 @@ async function handleFlushAutoSave() {
     </aside>
   </div>
 
+  <PolishModal
+    :visible="polishVisible"
+    :selectedText="polishText"
+    :selectionFrom="polishFrom"
+    :selectionTo="polishTo"
+    @replace="handlePolishReplace"
+    @close="handlePolishClose"
+  />
+
+  <SearchBar
+    :currentChapterId="currentChapterId"
+    :currentVolumeId="currentVolumeId"
+    @switchChapter="handleSearchSwitchChapter"
+    @highlight="handleSearchHighlight"
+    @clearHighlights="handleSearchClearHighlights"
+    @scrollToOffset="handleSearchScrollToOffset"
+  />
 </template>
 
 <style scoped>

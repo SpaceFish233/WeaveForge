@@ -14,6 +14,8 @@ type Character struct {
 	Avatar        string    `gorm:"size:255" json:"avatar"` // placeholder / URL
 	Role          string    `gorm:"size:50" json:"role"` // 主角 / 配角 / 反派 / 路人
 	Status        string    `gorm:"size:30;default:'active'" json:"status"` // active / inactive / deceased
+	GraphX        float64   `gorm:"default:0" json:"graph_x"`
+	GraphY        float64   `gorm:"default:0" json:"graph_y"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }

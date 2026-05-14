@@ -5,6 +5,9 @@ import ForeshadowView from '../views/ForeshadowView.vue'
 import PlotEngineView from '../views/PlotEngineView.vue'
 import APISettingsView from '../views/APISettingsView.vue'
 import CharacterView from '../views/CharacterView.vue'
+import TimelineView from '../views/TimelineView.vue'
+import OutlineView from '../views/OutlineView.vue'
+import StatsView from '../views/StatsView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -15,6 +18,9 @@ const router = createRouter({
     { path: '/foreshadow', name: 'foreshadow', component: ForeshadowView },
     { path: '/plot', name: 'plot', component: PlotEngineView },
     { path: '/characters', name: 'characters', component: CharacterView },
+    { path: '/timeline', name: 'timeline', component: TimelineView },
+    { path: '/outline', name: 'outline', component: OutlineView },
+    { path: '/stats', name: 'stats', component: StatsView },
   ],
 })
 

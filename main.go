@@ -11,8 +11,12 @@ import (
 	"weaveforge/internal/agent/character"
 	"weaveforge/internal/agent/foreshadow"
 	"weaveforge/internal/agent/plotengine"
+	"weaveforge/internal/agent/outline"
+	"weaveforge/internal/agent/relationship"
 	"weaveforge/internal/agent/setting"
+	"weaveforge/internal/agent/stats"
 	"weaveforge/internal/agent/style"
+	"weaveforge/internal/agent/timeline"
 	"weaveforge/internal/agent/typo"
 	"weaveforge/internal/config"
 	"weaveforge/internal/coordinator"
@@ -60,6 +64,7 @@ func main() {
 
 	chapterService := services.NewChapterService(db.DB)
 	volumeService := services.NewVolumeService(db.DB)
+	searchService := services.NewSearchService(db.DB)
 
 	// Build embedder: llamacpp (GGUF) or hash fallback
 	// Start with hash embedder as immediate fallback, then try llamacpp async
@@ -106,15 +111,19 @@ func main() {
 	styleAgent := style.NewAgent(db.DB, chatClient, chatModel)
 	foreshadowAgent := foreshadow.NewAgent(db.DB, chatClient, chatModel)
 	plotEngine := plotengine.NewAgent(db.DB, chatClient, chatModel)
+	relationshipAgent := relationship.NewAgent(db.DB)
+	outlineAgent := outline.NewAgent(db.DB)
+	timelineAgent := timeline.NewAgent(db.DB, chatClient, chatModel)
 	characterAgent := character.NewAgent(db.DB)
 	typoAgent := typo.NewAgent(chatClient, chatModel)
+	statsAgent := stats.NewAgent(db.DB)
 
 	coord := coordinator.New(coordinator.AgentHolders{
-		Setting: settingAgent, Style: styleAgent,
+		Setting:    settingAgent,
 		Foreshadow: foreshadowAgent,
 	})
 	coord.Start()
-	app := NewApp(chapterService, volumeService, characterAgent, settingAgent, styleAgent, foreshadowAgent, plotEngine, typoAgent, coord, appConfig, embedder)
+	app := NewApp(chapterService, volumeService, searchService, characterAgent, settingAgent, styleAgent, foreshadowAgent, plotEngine, relationshipAgent, outlineAgent, timelineAgent, typoAgent, statsAgent, coord, appConfig, embedder)
 
 	if err := wails.Run(&options.App{
 		Title:  "WeaveForge",

@@ -6,21 +6,33 @@ import {models} from '../models';
 import {setting} from '../models';
 import {typo} from '../models';
 import {config} from '../models';
+import {outline} from '../models';
+import {relationship} from '../models';
 import {coordinator} from '../models';
+import {timeline} from '../models';
+import {stats} from '../models';
 import {character} from '../models';
-import {style} from '../models';
+import {services} from '../models';
 
 export function AnalyseBranch(arg1:plotengine.Branch):Promise<plotengine.BranchAnalysis>;
 
-export function AnalyzeStyle(arg1:string,arg2:string):Promise<string>;
-
 export function AutoDetectForeshadowing(arg1:string):Promise<Array<foreshadow.CandidateForeshadow>>;
+
+export function BindOutlineChapter(arg1:string,arg2:string):Promise<void>;
 
 export function ConfirmForeshadowing(arg1:foreshadow.CandidateForeshadow,arg2:string):Promise<string>;
 
 export function CreateChapter(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function CreateCharacter(arg1:models.Character):Promise<string>;
+
+export function CreateOutlineNode(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function CreateRelationship(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<string>;
+
+export function CreateTimelineEvent(arg1:string,arg2:string,arg3:string,arg4:Array<string>,arg5:boolean,arg6:string,arg7:string):Promise<string>;
+
+export function CreateTimelineNode(arg1:number,arg2:string,arg3:string):Promise<string>;
 
 export function CreateVolume(arg1:string):Promise<string>;
 
@@ -30,15 +42,25 @@ export function DeleteCharacter(arg1:string):Promise<void>;
 
 export function DeleteForeshadowing(arg1:string):Promise<void>;
 
+export function DeleteOutlineNode(arg1:string):Promise<void>;
+
+export function DeleteRelationship(arg1:string):Promise<void>;
+
 export function DeleteSetting(arg1:string):Promise<void>;
 
-export function DeleteStyleProfile(arg1:string):Promise<void>;
+export function DeleteTimelineEvent(arg1:string):Promise<void>;
+
+export function DeleteTimelineNode(arg1:string):Promise<void>;
 
 export function DeleteVolume(arg1:string):Promise<void>;
 
 export function DetectSettings(arg1:string,arg2:boolean,arg3:boolean):Promise<Array<setting.SettingHit>>;
 
 export function DetectTypos(arg1:string):Promise<Array<typo.TypoSuggestion>>;
+
+export function ExportOutlineMarkdown():Promise<string>;
+
+export function ExportStatsCSV():Promise<string>;
 
 export function GenerateBranches(arg1:plotengine.GenerationParams):Promise<Array<plotengine.Branch>>;
 
@@ -58,17 +80,39 @@ export function GetEmbedderEngine():Promise<string>;
 
 export function GetForeshadowing(arg1:string):Promise<models.Foreshadowing>;
 
+export function GetOutlineNodeByChapter(arg1:string):Promise<outline.OutlineTreeNode>;
+
+export function GetOutlineTree():Promise<Array<outline.OutlineTreeNode>>;
+
+export function GetRelationshipGraph(arg1:string):Promise<relationship.GraphData>;
+
+export function GetRelationships(arg1:string):Promise<Array<relationship.RelationshipSummary>>;
+
 export function GetSessionHistory():Promise<Array<coordinator.SessionEvent>>;
 
 export function GetSetting(arg1:string):Promise<models.WorldSetting>;
 
-export function GetStyleProfile(arg1:string):Promise<models.StyleProfile>;
+export function GetTimeBase():Promise<models.TimeBase>;
+
+export function GetTimelineNode(arg1:string):Promise<timeline.NodeWithEvents>;
+
+export function GetTodayWritingStats():Promise<stats.DailyStatsRow>;
+
+export function GetWeekWritingStats():Promise<number>;
+
+export function GetWritingGoals():Promise<stats.GoalSettings>;
+
+export function GetWritingStats(arg1:number):Promise<Array<stats.DailyStatsRow>>;
+
+export function GetWritingStats365():Promise<Array<stats.DailyStatsRow>>;
+
+export function GetWritingStreak():Promise<number>;
 
 export function ImportContent(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function ImportDocument(arg1:string):Promise<Array<string>>;
 
-export function LearnStyle(arg1:string,arg2:Array<string>):Promise<string>;
+export function ImportOutlineFromChapters():Promise<void>;
 
 export function ListChapters():Promise<Array<models.ChapterSummary>>;
 
@@ -78,29 +122,43 @@ export function ListForeshadowings(arg1:string):Promise<Array<foreshadow.Foresha
 
 export function ListSettings():Promise<Array<setting.SettingInfo>>;
 
-export function ListStyleProfiles():Promise<Array<style.StyleProfileSummary>>;
+export function ListTimelineNodes():Promise<Array<timeline.NodeWithEvents>>;
 
 export function ListVolumes():Promise<Array<models.VolumeSummary>>;
 
 export function MergeBranches(arg1:Array<string>):Promise<string>;
 
+export function MoveOutlineNode(arg1:string,arg2:string,arg3:number):Promise<void>;
+
 export function OnParagraphWritten(arg1:string,arg2:string):Promise<void>;
 
-export function PolishText(arg1:string,arg2:string,arg3:string):Promise<string>;
+export function PolishWithInstruction(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function RecordNotificationAction(arg1:string,arg2:string):Promise<void>;
 
 export function ReorderChapters(arg1:Array<string>):Promise<void>;
 
+export function ReplaceInChapters(arg1:Array<services.ReplaceItem>,arg2:string):Promise<number>;
+
 export function ReviseDialogue(arg1:string,arg2:string):Promise<string>;
 
 export function SaveForeshadowing(arg1:string,arg2:string):Promise<string>;
+
+export function SaveGraphPositions(arg1:Array<relationship.NodePosition>):Promise<void>;
+
+export function SaveTimeBase(arg1:string,arg2:string):Promise<models.TimeBase>;
+
+export function ScanChaptersForTimeline(arg1:Array<string>):Promise<timeline.ScanResult>;
+
+export function SearchChapters(arg1:string,arg2:string,arg3:boolean,arg4:boolean,arg5:boolean):Promise<Array<services.SearchResult>>;
 
 export function SelectExeFile():Promise<string>;
 
 export function SelectGGUFFile():Promise<string>;
 
 export function SetAssistantIntensity(arg1:number):Promise<void>;
+
+export function SetWritingGoals(arg1:number,arg2:number):Promise<void>;
 
 export function SuggestReveal(arg1:number):Promise<Array<foreshadow.RevealSuggestion>>;
 
@@ -109,6 +167,8 @@ export function TestEmbeddingConnection(arg1:string,arg2:string):Promise<void>;
 export function TestEmbeddingLocal():Promise<string>;
 
 export function TestLLMConnection(arg1:string,arg2:string):Promise<void>;
+
+export function UnbindOutlineChapter(arg1:string):Promise<void>;
 
 export function UpdateChapter(arg1:string,arg2:string):Promise<void>;
 
@@ -122,9 +182,19 @@ export function UpdateConfig(arg1:config.Config):Promise<void>;
 
 export function UpdateForeshadowing(arg1:string,arg2:Record<string, any>):Promise<void>;
 
+export function UpdateOutlineNode(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function UpdateRelationship(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
+
 export function UpdateSetting(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
+export function UpdateTimelineEvent(arg1:string,arg2:string,arg3:string,arg4:Array<string>,arg5:boolean,arg6:string):Promise<void>;
+
+export function UpdateTimelineNode(arg1:string,arg2:number,arg3:string,arg4:string):Promise<void>;
+
 export function UpdateVolume(arg1:string,arg2:string):Promise<void>;
+
+export function UpdateWritingGoalSettings(arg1:number):Promise<void>;
 
 export function UploadWorldSetting(arg1:string,arg2:string,arg3:string):Promise<void>;
 
