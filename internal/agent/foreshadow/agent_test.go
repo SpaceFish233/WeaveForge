@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"weaveforge/internal/textutil"
 	"weaveforge/models"
 
 	"gorm.io/driver/sqlite"
@@ -171,7 +172,7 @@ func TestBuildByteToRuneMap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := buildByteToRuneMap(tt.input)
+			m := textutil.ByteToRuneMap(tt.input)
 			if tt.bytePos < len(m) {
 				if m[tt.bytePos] != tt.wantRune {
 					t.Errorf("buildByteToRuneMap(%q)[%d] = %d, want %d", tt.input, tt.bytePos, m[tt.bytePos], tt.wantRune)

@@ -108,19 +108,19 @@ func (s *SQLiteStore) AddDocuments(ctx context.Context, docs []Document) error {
 const maxSearchDocs = 10000
 
 func (s *SQLiteStore) SearchSimilar(ctx context.Context, query string, topK int) ([]Document, error) {
-	// Step 1: embed the query text
+	// Step 1: embed the query text (outside lock to avoid blocking writes)
 	queryVec, err := s.embed.Embed(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("vectordb: embed query: %w", err)
 	}
 
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	var rows []vectorDoc
 	if err := s.db.WithContext(ctx).Limit(maxSearchDocs).Find(&rows).Error; err != nil {
+		s.mu.RUnlock()
 		return nil, fmt.Errorf("vectordb: query: %w", err)
 	}
+	s.mu.RUnlock()
 
 	type scored struct {
 		doc vectorDoc

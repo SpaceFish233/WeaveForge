@@ -94,10 +94,10 @@ func (a *Agent) UpdateDailyStats(ctx context.Context, chapterID, oldContent, new
 		}
 		updates := map[string]any{
 			"total_word_count":   totalWords,
-			"new_words":          stat.NewWords + diff,
-			"chapters_modified":  stat.ChaptersModified + 1,
+			"new_words":          gorm.Expr("new_words + ?", diff),
+			"chapters_modified": gorm.Expr("chapters_modified + 1"),
 		}
-		if err := a.db.WithContext(ctx).Model(&stat).Updates(updates).Error; err != nil {
+		if err := a.db.WithContext(ctx).Model(&models.DailyStats{}).Where("id = ?", stat.ID).Updates(updates).Error; err != nil {
 			return err
 		}
 	}

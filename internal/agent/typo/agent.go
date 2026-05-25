@@ -27,8 +27,8 @@ func NewAgent(llm chatClient, chatModel string) *Agent {
 
 // DetectTypos checks the given content for typos using LLM.
 // It segments long content by paragraphs and processes each segment independently.
-// Returns TypoSuggestion with sentence-relative indices (StartIndex/EndIndex are
-// relative to the Sentence field, not to the full content).
+// Returns TypoSuggestion with StartIndex/EndIndex as absolute rune offsets
+// within the trimmed content, plus the Sentence containing the typo.
 func (a *Agent) DetectTypos(ctx context.Context, content string) ([]TypoSuggestion, error) {
 	if a.llm == nil || !a.llm.HasConfig() {
 		return nil, fmt.Errorf("typo: 未配置 LLM API，请先在设置中配置 API Key 和 Base URL")
@@ -47,6 +47,7 @@ func (a *Agent) DetectTypos(ctx context.Context, content string) ([]TypoSuggesti
 	segments := splitByParagraph(runes, maxSegmentRunes)
 	log.Printf("[Typo] Split into %d segments", len(segments))
 	var allResults []TypoSuggestion
+	cumulativeOffset := 0
 
 	for i, seg := range segments {
 		log.Printf("[Typo] Processing segment %d/%d (%d runes)", i+1, len(segments), len(seg))
@@ -55,8 +56,14 @@ func (a *Agent) DetectTypos(ctx context.Context, content string) ([]TypoSuggesti
 			log.Printf("[Typo] Segment %d failed: %v", i+1, err)
 			return nil, fmt.Errorf("typo: 检测失败 (段 %d/%d): %w", i+1, len(segments), err)
 		}
+		// Adjust indices to be absolute relative to the full trimmed content
+		for j := range suggestions {
+			suggestions[j].StartIndex += cumulativeOffset
+			suggestions[j].EndIndex += cumulativeOffset
+		}
 		log.Printf("[Typo] Segment %d returned %d suggestions", i+1, len(suggestions))
 		allResults = append(allResults, suggestions...)
+		cumulativeOffset += len(seg)
 	}
 
 	log.Printf("[Typo] Total results: %d", len(allResults))
@@ -200,15 +207,31 @@ func parseResponse(resp string) ([]TypoSuggestion, error) {
 
 	var suggestions []TypoSuggestion
 	if err := json.Unmarshal([]byte(resp), &suggestions); err != nil {
-		// Try to find JSON array in the response
-		start := strings.Index(resp, "[")
-		end := strings.LastIndex(resp, "]")
-		if start >= 0 && end > start {
-			if err2 := json.Unmarshal([]byte(resp[start:end+1]), &suggestions); err2 != nil {
+		// Try to extract the last complete JSON array using matching bracket pairs
+		// (LLMs often prefix with explanation text).
+		lastOpen := strings.LastIndex(resp, "[")
+		close := -1
+		if lastOpen >= 0 {
+			depth := 0
+			for i := lastOpen; i < len(resp); i++ {
+				switch resp[i] {
+				case '[':
+					depth++
+				case ']':
+					depth--
+					if depth == 0 {
+						close = i
+						break
+					}
+				}
+			}
+		}
+		if lastOpen >= 0 && close > lastOpen {
+			if err2 := json.Unmarshal([]byte(resp[lastOpen:close+1]), &suggestions); err2 != nil {
 				return nil, fmt.Errorf("failed to parse LLM response as JSON: %w (raw: %s)", err, truncate(resp, 200))
 			}
 		} else {
-			return nil, fmt.Errorf("no JSON array found in response (raw: %s)", truncate(resp, 200))
+			return nil, fmt.Errorf("no valid JSON array found in response (raw: %s)", truncate(resp, 200))
 		}
 	}
 

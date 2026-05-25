@@ -53,7 +53,7 @@ func (a *Agent) GetRelationships(ctx context.Context, filterChapterID string) ([
 			StartChapterID: r.StartChapterID,
 			EndChapterID:   r.EndChapterID,
 			Note:           r.Note,
-			IsActive:       r.EndChapterID == nil,
+			IsActive:       r.EndChapterID == nil || *r.EndChapterID == "",
 		}
 	}
 	return result, nil
@@ -91,7 +91,11 @@ func (a *Agent) UpdateRelationship(ctx context.Context, id, relType, startChapte
 	if endChapterID != "" {
 		updates["end_chapter_id"] = endChapterID
 	} else {
+		// nil means relationship is still active — not ended
 		updates["end_chapter_id"] = nil
+	}
+	if startChapterID == "" {
+		return fmt.Errorf("relationship: start_chapter_id is required")
 	}
 	return a.db.WithContext(ctx).Model(&models.Relationship{}).Where("id = ?", id).Updates(updates).Error
 }

@@ -97,7 +97,7 @@ async function doSearch() {
   searching.value = true
   searchError.value = false
   try {
-    const res = await SearchChapters(kw, scope.value, caseSensitive.value, wholeWord.value, useRegex.value)
+    const res = await SearchChapters(kw, scope.value, caseSensitive.value, wholeWord.value, useRegex.value, props.currentChapterId || '', props.currentVolumeId || '')
     results.value = res || []
     if (results.value.length > 0) {
       // Find first result in current chapter, or use first result
@@ -136,8 +136,8 @@ async function activateResult(idx: number) {
   // Switch chapter if needed
   if (r.chapter_id !== props.currentChapterId) {
     emit('switchChapter', r.chapter_id)
-    // Wait a bit for chapter to load
-    await new Promise(resolve => setTimeout(resolve, 300))
+    // Wait for chapter to load — polling or generous timeout
+    await new Promise(resolve => setTimeout(resolve, 800))
   }
   emit('highlight', results.value, idx)
   emit('scrollToOffset', r.offset)

@@ -178,7 +178,7 @@ func TestValidateSettingConflict_NoConflict(t *testing.T) {
 	db.Create(&models.WorldSetting{ID: "s1", Title: "魔法", Content: "主角是冰系魔法师，无法使用火系魔法", Type: "世界观"})
 
 	agent := NewAgent(nil, nil, &mockLLM{response: `{"has_conflict": false}`}, "test", db)
-	result, err := agent.ValidateSettingConflict("s1", "主角使用魔法战斗")
+	result, err := agent.ValidateSettingConflict(context.Background(),"s1", "主角使用魔法战斗")
 	if err != nil {
 		t.Fatalf("ValidateSettingConflict: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestValidateSettingConflict_WithConflict(t *testing.T) {
 	agent := NewAgent(nil, nil, &mockLLM{
 		response: `{"has_conflict": true, "conflict_desc": "主角使用了火球术但设定为冰系", "suggested_fix": "改为冰箭术", "reference_text": "主角是冰系魔法师，无法使用火系魔法"}`,
 	}, "test", db)
-	result, err := agent.ValidateSettingConflict("s1", "主角使用魔法发出火球术攻击敌人")
+	result, err := agent.ValidateSettingConflict(context.Background(),"s1", "主角使用魔法发出火球术攻击敌人")
 	if err != nil {
 		t.Fatalf("ValidateSettingConflict: %v", err)
 	}

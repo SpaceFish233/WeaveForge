@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"weaveforge/internal/llm"
+	"weaveforge/internal/textutil"
 	"weaveforge/models"
 
 	"github.com/google/uuid"
@@ -57,7 +58,7 @@ func (a *Agent) AutoDetectForeshadowing(ctx context.Context, chapterContent stri
 
 	// Step 1: Regex-based candidate extraction
 	runes := []rune(text)
-	byteToRune := buildByteToRuneMap(text)
+	byteToRune := textutil.ByteToRuneMap(text)
 	var regexCandidates []CandidateForeshadow
 	for _, fp := range foreshadowPatterns {
 		matches := fp.pattern.FindAllStringIndex(text, -1)
@@ -90,13 +91,15 @@ func (a *Agent) AutoDetectForeshadowing(ctx context.Context, chapterContent stri
 
 	// Step 2: LLM verification & classification
 	if len(regexCandidates) > 0 && a.llm != nil {
-		var candidatesJSON strings.Builder
-		for i, c := range regexCandidates {
-			fmt.Fprintf(&candidatesJSON, `{"index":%d,"text":"%s"}`, i, strings.ReplaceAll(c.Text, `"`, `\"`))
-			if i < len(regexCandidates)-1 {
-				candidatesJSON.WriteString(",\n")
-			}
+		type candidateJSON struct {
+			Index int    `json:"index"`
+			Text  string `json:"text"`
 		}
+		candidatesForJSON := make([]candidateJSON, len(regexCandidates))
+		for i, c := range regexCandidates {
+			candidatesForJSON[i] = candidateJSON{Index: i, Text: c.Text}
+		}
+		candidatesJSONBytes, _ := json.Marshal(candidatesForJSON)
 
 		prompt := fmt.Sprintf(`你是一位小说伏笔分析专家。
 
@@ -105,12 +108,12 @@ func (a *Agent) AutoDetectForeshadowing(ctx context.Context, chapterContent stri
 可能的伏笔类型：人物背景、关键道具、时间谜团、对话暗示
 
 候选文本（JSON）：
-[%s]
+%s
 
 对每个候选，返回JSON数组（只输出JSON）：
 [{"index":0,"is_foreshadow":true,"type":"人物背景","confidence":0.8,"reason":"暗示角色有隐藏过去"}]
 
-如果没有伏笔，返回空数组[]。`, candidatesJSON.String())
+如果没有伏笔，返回空数组[]。`, string(candidatesJSONBytes))
 
 		resp, err := a.llm.ChatCompletion(ctx, []llm.Message{
 			{Role: "system", Content: "你是一位小说伏笔分析专家。只输出JSON数组，不要其他文字。"},
@@ -265,30 +268,33 @@ func (a *Agent) SuggestReveal(ctx context.Context, currentChapterIndex int) ([]R
 		return nil, nil
 	}
 
-	// LLM: generate reveal plans
-	var itemsJSON strings.Builder
+	// LLM: generate reveal plans — use json.Marshal to safely encode
+	type revealItem struct {
+		ID          string `json:"id"`
+		Description string `json:"description"`
+		Type        string `json:"type"`
+	}
+	revealItems := make([]revealItem, len(candidates))
 	for i, c := range candidates {
 		desc := c.Description
 		if len([]rune(desc)) > 100 {
 			desc = string([]rune(desc)[:100])
 		}
-		fmt.Fprintf(&itemsJSON, `{"id":"%s","description":"%s","type":"%s"}`, c.ID, desc, c.Type)
-		if i < len(candidates)-1 {
-			itemsJSON.WriteString(",\n")
-		}
+		revealItems[i] = revealItem{ID: c.ID, Description: desc, Type: c.Type}
 	}
+	itemsJSONBytes, _ := json.Marshal(revealItems)
 
 	prompt := fmt.Sprintf(`你是一位小说创作助手。以下伏笔需要在第 %d 章附近揭示。
 
 伏笔列表：
-[%s]
+%s
 
 为每个伏笔生成 2-3 种揭示方案。方案类型："侧面揭示"、"直接回忆"、"事件触发"。
 每种方案包含一段融入本章的草稿段落（150字以内）。
 
-只输出JSON数组：`+`[{"id":"伏笔ID","plans":[{"method":"方案类型","paragraph":"草稿段落"}]}]`+`
+只输出JSON数组：[{"id":"伏笔ID","plans":[{"method":"方案类型","paragraph":"草稿段落"}]}]
 
-如果没有合适的方案，返回空数组[]。`, currentChapterIndex, itemsJSON.String())
+如果没有合适的方案，返回空数组[]。`, currentChapterIndex, string(itemsJSONBytes))
 
 	resp, err := a.llm.ChatCompletion(ctx, []llm.Message{
 		{Role: "system", Content: "你是小说创作助手，为伏笔设计揭示方案。只输出JSON数组。"},
@@ -328,21 +334,6 @@ func (a *Agent) SuggestReveal(ctx context.Context, currentChapterIndex int) ([]R
 		}
 	}
 	return results, nil
-}
-
-// buildByteToRuneMap builds a mapping from byte offset to rune offset for a string.
-// This is needed because regexp.FindAllStringIndex returns byte offsets,
-// but we work with rune slices for correct Unicode handling.
-func buildByteToRuneMap(s string) []int {
-	// byteToRune[bytePos] = runePos
-	m := make([]int, len(s)+1)
-	runePos := 0
-	for i := range s {
-		m[i] = runePos
-		runePos++
-	}
-	m[len(s)] = runePos
-	return m
 }
 
 // ─── Health Report ─────────────────────────────────────────────────────

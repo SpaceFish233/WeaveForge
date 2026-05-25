@@ -139,7 +139,7 @@ func (c *Coordinator) recordEvent(tp, agent, content, action string) {
 
 // ─── Agent Orchestration ───────────────────────────────────────────────
 
-// OnParagraphWritten runs agents asynchronously and pushes results.
+// OnParagraphWritten fires agents asynchronously (fire-and-forget).
 func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
 	if c.intensity.Load() == 0 || paragraphText == "" {
 		return
@@ -147,8 +147,6 @@ func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
 
 	threshold := float64(c.intensity.Load()) / 10.0
 
-	// Fire all checks concurrently
-	var wg sync.WaitGroup
 	c.ctxMu.RLock()
 	ctx := c.ctx
 	c.ctxMu.RUnlock()
@@ -156,16 +154,10 @@ func (c *Coordinator) OnParagraphWritten(chapterID, paragraphText string) {
 		ctx = context.Background()
 	}
 
-	// b) Foreshadow detection
+	// Foreshadow detection (fire-and-forget, do not block caller)
 	if c.agents.Foreshadow != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c.detectForeshadow(ctx, chapterID, paragraphText, threshold)
-		}()
+		go c.detectForeshadow(ctx, chapterID, paragraphText, threshold)
 	}
-
-	wg.Wait()
 }
 
 func (c *Coordinator) detectForeshadow(ctx context.Context, chapterID, text string, threshold float64) {
@@ -173,7 +165,11 @@ func (c *Coordinator) detectForeshadow(ctx context.Context, chapterID, text stri
 		return
 	}
 	candidates, err := c.agents.Foreshadow.AutoDetectForeshadowing(ctx, text)
-	if err != nil || len(candidates) == 0 {
+	if err != nil {
+		log.Printf("coordinator: foreshadow detection error: %v", err)
+		return
+	}
+	if len(candidates) == 0 {
 		return
 	}
 	for _, cand := range candidates {

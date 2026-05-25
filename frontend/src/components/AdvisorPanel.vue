@@ -2,9 +2,11 @@
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
   OnParagraphWritten, SetAssistantIntensity, GetAssistantIntensity, RecordNotificationAction,
-  GetOutlineNodeByChapter,
+  GetOutlineNodeByChapter, DetectAIFlavor, CheckChapterHook,
+  CheckWritingConstraints, ScanPlaceholders,
 } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
+import { style } from '../../wailsjs/go/models'
 import ConsistencyCheck from './ConsistencyCheck.vue'
 import TypoPanel from './TypoPanel.vue'
 
@@ -74,6 +76,144 @@ const agentMeta: Record<string, { icon: string; label: string }> = {
 }
 function agentMetaFor(a: string) { return agentMeta[a] || { icon: '📋', label: a } }
 
+// ─── AI Flavor check ───
+const aiFlavorLoading = ref(false)
+const aiFlavorReport = ref<style.AIFlavorReport | null>(null)
+const aiFlavorError = ref('')
+let aiFlavorReqId = 0
+
+async function runAIFlavorCheck() {
+  if (!props.chapterContent.trim()) return
+  aiFlavorLoading.value = true
+  aiFlavorError.value = ''
+  const reqId = ++aiFlavorReqId
+  try {
+    const report = await DetectAIFlavor(props.chapterContent)
+    if (reqId === aiFlavorReqId) {
+      aiFlavorReport.value = report
+    }
+  } catch (e: any) {
+    if (reqId === aiFlavorReqId) {
+      aiFlavorError.value = e?.message || String(e)
+    }
+  } finally {
+    if (reqId === aiFlavorReqId) {
+      aiFlavorLoading.value = false
+    }
+  }
+}
+
+// ─── Hook check ───
+const hookLoading = ref(false)
+const hookResult = ref<style.HookCheckResult | null>(null)
+const hookError = ref('')
+const prevChapterContent = ref('')
+let hookReqId = 0
+
+async function runHookCheck() {
+  if (!props.chapterContent.trim()) return
+  hookLoading.value = true
+  hookError.value = ''
+  const reqId = ++hookReqId
+  try {
+    const result = await CheckChapterHook(props.chapterContent, prevChapterContent.value)
+    if (reqId === hookReqId) {
+      hookResult.value = result
+    }
+  } catch (e: any) {
+    if (reqId === hookReqId) {
+      hookError.value = e?.message || String(e)
+    }
+  } finally {
+    if (reqId === hookReqId) {
+      hookLoading.value = false
+    }
+  }
+}
+
+function severityColor(s: string): string {
+  switch (s) {
+    case 'pass': return '#3fb950'
+    case 'low': return '#58a6ff'
+    case 'medium': return '#d29922'
+    case 'high': return '#f85149'
+    case 'critical': return '#f85149'
+    default: return '#8b949e'
+  }
+}
+
+function hookTypeLabel(t: string): string {
+  const map: Record<string, string> = {
+    crisis: '危机钩', mystery: '悬念钩', desire: '渴望钩',
+    emotion: '情绪钩', choice: '选择钩', recognition: '认知钩',
+    none: '无钩子',
+  }
+  return map[t] || t
+}
+
+// ─── Constraint check ───
+const constraintLoading = ref(false)
+const constraintResult = ref<style.ConstraintCheckResult | null>(null)
+const constraintError = ref('')
+let constraintReqId = 0
+
+async function runConstraintCheck() {
+  if (!props.chapterContent.trim()) return
+  constraintLoading.value = true
+  constraintError.value = ''
+  const reqId = ++constraintReqId
+  try {
+    const result = await CheckWritingConstraints(props.chapterContent)
+    if (reqId === constraintReqId) {
+      constraintResult.value = result
+    }
+  } catch (e: any) {
+    if (reqId === constraintReqId) {
+      constraintError.value = e?.message || String(e)
+    }
+  } finally {
+    if (reqId === constraintReqId) {
+      constraintLoading.value = false
+    }
+  }
+}
+
+// ─── Placeholder scan ───
+const placeholderLoading = ref(false)
+const placeholderResult = ref<style.PlaceholderScanResult | null>(null)
+
+async function runPlaceholderScan() {
+  if (!props.chapterContent.trim()) return
+  placeholderLoading.value = true
+  try {
+    const result = await ScanPlaceholders(props.chapterContent)
+    placeholderResult.value = result
+  } catch (e: any) {
+    placeholderResult.value = new style.PlaceholderScanResult({ clean: false, matches: [], checked_at: '' })
+    // non-critical, silently ignore errors
+  } finally {
+    placeholderLoading.value = false
+  }
+}
+
+// Also auto-scan on content change (debounced)
+let placeholderTimer: number | null = null
+function autoScanPlaceholders() {
+  if (placeholderTimer) clearTimeout(placeholderTimer)
+  placeholderTimer = window.setTimeout(() => runPlaceholderScan(), 2000)
+}
+// Trigger auto-scan when content changes
+watch(() => props.chapterContent.length, () => {
+  if (props.chapterID) autoScanPlaceholders()
+})
+
+function placeholderTypeLabel(t: string): string {
+  const map: Record<string, string> = {
+    todo: '待完成', temp_name: '暂命名', placeholder: '占位符', ellipsis: '省略标记',
+  }
+  return map[t] || t
+}
+
 // Write debounce
 let lastLen = 0
 let writeTimer: number | null = null
@@ -87,6 +227,35 @@ function onContentChange() {
   }, 1500)
 }
 watch(() => props.chapterContent.length, () => { if (props.chapterID) onContentChange() })
+// Reset tracking when switching chapters to avoid false triggers
+watch(() => props.chapterID, () => {
+  lastLen = 0
+  if (writeTimer) clearTimeout(writeTimer)
+  // Clear previous check results on chapter switch
+  aiFlavorReport.value = null
+  hookResult.value = null
+  aiFlavorError.value = ''
+  hookError.value = ''
+  constraintResult.value = null
+  constraintError.value = ''
+  placeholderResult.value = null
+  // Load previous chapter for hook comparison
+  loadPrevChapter()
+})
+
+async function loadPrevChapter() {
+  prevChapterContent.value = ''
+  if (!props.chapterID) return
+  try {
+    const { GetChapter, ListChapters } = await import('../../wailsjs/go/main/App')
+    const chapters = await ListChapters()
+    const idx = chapters.findIndex(c => c.id === props.chapterID)
+    if (idx > 0) {
+      const prev = await GetChapter(chapters[idx - 1].id)
+      prevChapterContent.value = prev.content || ''
+    }
+  } catch { /* non-critical */ }
+}
 
 onMounted(async () => {
   intensity.value = await GetAssistantIntensity()
@@ -122,6 +291,112 @@ onBeforeUnmount(() => { EventsOff('coordinator:notification'); if (writeTimer) c
             @contentUpdate="handleTypoContentUpdate"
             @flushAutoSave="handleFlushAutoSave"
           />
+        </div>
+      </div>
+      <div class="tool-section">
+        <div class="tool-header">🤖 AI味检测</div>
+        <div class="tool-body">
+          <div class="check-panel">
+            <button class="check-btn" :disabled="aiFlavorLoading" @click="runAIFlavorCheck">
+              <span v-if="aiFlavorLoading" class="mini-spinner"></span>
+              <span v-else>检测AI味</span>
+            </button>
+            <div v-if="aiFlavorError" class="check-error">{{ aiFlavorError }}</div>
+            <div v-if="aiFlavorReport" class="flavor-report">
+              <div class="report-summary">{{ aiFlavorReport.summary }}</div>
+              <div v-for="dim in aiFlavorReport.dimensions" :key="dim.label" class="flavor-dim">
+                <div class="dim-header">
+                  <span class="dim-label">{{ dim.label }}</span>
+                  <span class="dim-severity" :style="{ color: severityColor(dim.severity) }">{{ dim.severity }}</span>
+                </div>
+                <div v-if="dim.issues.length > 0" class="dim-issues">
+                  <div v-for="(issue, idx) in dim.issues" :key="idx" class="flavor-issue">
+                    <div class="issue-desc">{{ issue.description }}</div>
+                    <div class="issue-evidence">原文：{{ issue.evidence }}</div>
+                    <div class="issue-fix">建议：{{ issue.fix_hint }}</div>
+                  </div>
+                </div>
+                <div v-else class="dim-pass">通过</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tool-section">
+        <div class="tool-header">🪝 章末钩子检查</div>
+        <div class="tool-body">
+          <div class="check-panel">
+            <button class="check-btn" :disabled="hookLoading" @click="runHookCheck">
+              <span v-if="hookLoading" class="mini-spinner"></span>
+              <span v-else>检查钩子</span>
+            </button>
+            <div v-if="hookError" class="check-error">{{ hookError }}</div>
+            <div v-if="hookResult" class="hook-report">
+              <div class="hook-type-row">
+                <span class="hook-type-label">钩子类型：</span>
+                <span class="hook-type-value">{{ hookTypeLabel(hookResult.hook_type) }}</span>
+                <span class="hook-strength" :style="{ color: hookResult.hook_strength === 'strong' ? '#3fb950' : hookResult.hook_strength === 'medium' ? '#d29922' : '#f85149' }">
+                  {{ hookResult.hook_strength === 'strong' ? '强' : hookResult.hook_strength === 'medium' ? '中' : '弱' }}
+                </span>
+              </div>
+              <div class="hook-analysis">{{ hookResult.closing_analysis }}</div>
+              <div v-if="hookResult.unresolved_questions && hookResult.unresolved_questions.length > 0" class="hook-questions">
+                <div class="hook-section-title">未解决问题：</div>
+                <div v-for="(q, idx) in hookResult.unresolved_questions" :key="idx" class="hook-question">{{ q }}</div>
+              </div>
+              <div class="hook-suggestion">{{ hookResult.suggestion }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tool-section">
+        <div class="tool-header">🔒 设定约束检查</div>
+        <div class="tool-body">
+          <div class="check-panel">
+            <button class="check-btn" :disabled="constraintLoading" @click="runConstraintCheck">
+              <span v-if="constraintLoading" class="mini-spinner"></span>
+              <span v-else>检查约束</span>
+            </button>
+            <div v-if="constraintError" class="check-error">{{ constraintError }}</div>
+            <div v-if="constraintResult" class="constraint-report">
+              <div class="constraint-status" :class="{ pass: constraintResult.passed, fail: !constraintResult.passed }">
+                {{ constraintResult.passed ? '✓ 通过' : '✗ ' + constraintResult.blocking_count + ' 个阻断问题' }}
+              </div>
+              <div class="report-summary">{{ constraintResult.summary }}</div>
+              <div v-if="constraintResult.issues && constraintResult.issues.length > 0" class="constraint-issues">
+                <div v-for="(iss, idx) in constraintResult.issues" :key="idx" class="constraint-issue">
+                  <div class="ci-header">
+                    <span class="ci-category">{{ iss.category }}</span>
+                    <span class="ci-severity" :style="{ color: severityColor(iss.severity) }">{{ iss.severity }}</span>
+                  </div>
+                  <div class="ci-desc">{{ iss.description }}</div>
+                  <div class="ci-evidence">证据：{{ iss.evidence }}</div>
+                  <div class="ci-fix">修复：{{ iss.fix_hint }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tool-section">
+        <div class="tool-header">📋 占位符扫描{{ placeholderResult && !placeholderResult.clean ? ' (' + placeholderResult.matches.length + ')' : '' }}</div>
+        <div class="tool-body">
+          <div class="check-panel">
+            <button class="check-btn" :disabled="placeholderLoading" @click="runPlaceholderScan">
+              <span v-if="placeholderLoading" class="mini-spinner"></span>
+              <span v-else>扫描占位符</span>
+            </button>
+            <div v-if="placeholderResult" class="placeholder-report">
+              <div v-if="placeholderResult.clean" class="placeholder-clean">✓ 未发现占位符</div>
+              <div v-else class="placeholder-list">
+                <div v-for="(m, idx) in placeholderResult.matches" :key="idx" class="placeholder-item">
+                  <span class="ph-type-tag" :class="m.type">{{ placeholderTypeLabel(m.type) }}</span>
+                  <span class="ph-pattern">「{{ m.pattern }}」</span>
+                  <span class="ph-context">…{{ m.context }}…</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -216,4 +491,76 @@ onBeforeUnmount(() => { EventsOff('coordinator:notification'); if (writeTimer) c
 .action-btn.dismiss:hover { background: #30363d; }
 .empty-state { text-align: center; padding: 20px 16px; color: #484f58; }
 .empty-state p { font-size: 12px; line-height: 1.5; }
+
+/* Check panels */
+.check-panel { padding: 10px 12px; }
+.check-btn {
+  width: 100%; padding: 6px 12px; background: #21262d; color: #c9d1d9;
+  border: 1px solid #30363d; border-radius: 6px; cursor: pointer;
+  font-size: 12px; font-weight: 600; font-family: inherit;
+  transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.check-btn:hover:not(:disabled) { background: #30363d; border-color: #58a6ff; }
+.check-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.check-error { color: #f85149; font-size: 11px; margin-top: 8px; }
+.mini-spinner {
+  width: 14px; height: 14px; border: 2px solid #30363d;
+  border-top-color: #58a6ff; border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* AI Flavor report */
+.flavor-report { margin-top: 10px; }
+.report-summary { font-size: 11px; color: #8b949e; line-height: 1.4; margin-bottom: 10px; padding: 8px; background: #0d1117; border-radius: 4px; }
+.flavor-dim { margin-bottom: 8px; border: 1px solid #21262d; border-radius: 6px; overflow: hidden; }
+.dim-header { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: #161b22; }
+.dim-label { font-size: 11px; font-weight: 600; color: #c9d1d9; }
+.dim-severity { font-size: 10px; font-weight: 600; }
+.dim-pass { font-size: 11px; color: #3fb950; padding: 4px 10px 6px; }
+.dim-issues { padding: 0 10px 8px; }
+.flavor-issue { margin-top: 6px; padding: 6px 8px; background: #0d1117; border-radius: 4px; }
+.issue-desc { font-size: 11px; color: #f85149; font-weight: 600; margin-bottom: 2px; }
+.issue-evidence { font-size: 10px; color: #8b949e; font-style: italic; margin-bottom: 2px; }
+.issue-fix { font-size: 10px; color: #58a6ff; }
+
+/* Hook report */
+.hook-report { margin-top: 10px; }
+.hook-type-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.hook-type-label { font-size: 11px; color: #8b949e; }
+.hook-type-value { font-size: 13px; font-weight: 600; color: #c9d1d9; }
+.hook-strength { font-size: 11px; font-weight: 600; }
+.hook-analysis { font-size: 11px; color: #8b949e; line-height: 1.5; margin-bottom: 8px; padding: 8px; background: #0d1117; border-radius: 4px; }
+.hook-section-title { font-size: 11px; font-weight: 600; color: #c9d1d9; margin-bottom: 4px; }
+.hook-questions { margin-bottom: 8px; }
+.hook-question { font-size: 11px; color: #d29922; padding: 2px 0 2px 10px; border-left: 2px solid #d29922; margin-bottom: 4px; }
+.hook-suggestion { font-size: 11px; color: #58a6ff; line-height: 1.4; padding: 8px; background: #0d1117; border-radius: 4px; }
+
+/* Constraint check */
+.constraint-report { margin-top: 10px; }
+.constraint-status { font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: 4px; text-align: center; margin-bottom: 8px; }
+.constraint-status.pass { color: #3fb950; background: rgba(63,185,80,0.1); }
+.constraint-status.fail { color: #f85149; background: rgba(248,81,73,0.1); }
+.constraint-issues { margin-top: 8px; }
+.constraint-issue { margin-bottom: 6px; border: 1px solid #21262d; border-radius: 6px; overflow: hidden; }
+.ci-header { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: #161b22; }
+.ci-category { font-size: 10px; font-weight: 600; color: #8b949e; text-transform: uppercase; }
+.ci-severity { font-size: 10px; font-weight: 600; }
+.ci-desc { font-size: 11px; color: #c9d1d9; padding: 6px 8px 2px; }
+.ci-evidence { font-size: 10px; color: #8b949e; font-style: italic; padding: 2px 8px; }
+.ci-fix { font-size: 10px; color: #58a6ff; padding: 2px 8px 6px; }
+
+/* Placeholder scan */
+.placeholder-report { margin-top: 8px; }
+.placeholder-clean { font-size: 12px; color: #3fb950; padding: 6px 0; text-align: center; }
+.placeholder-list { max-height: 200px; overflow-y: auto; }
+.placeholder-item { display: flex; align-items: center; gap: 6px; padding: 5px 6px; margin-bottom: 4px; background: #0d1117; border-radius: 4px; flex-wrap: wrap; }
+.ph-type-tag { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 3px; text-transform: uppercase; }
+.ph-type-tag.todo { background: rgba(248,81,73,0.15); color: #f85149; }
+.ph-type-tag.temp_name { background: rgba(210,153,34,0.15); color: #d29922; }
+.ph-type-tag.placeholder { background: rgba(88,166,255,0.15); color: #58a6ff; }
+.ph-type-tag.ellipsis { background: rgba(139,148,158,0.15); color: #8b949e; }
+.ph-pattern { font-size: 11px; color: #f85149; font-weight: 600; font-family: monospace; }
+.ph-context { font-size: 10px; color: #8b949e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 </style>

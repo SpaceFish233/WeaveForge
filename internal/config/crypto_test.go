@@ -71,9 +71,7 @@ func TestIsEncrypted(t *testing.T) {
 }
 
 func TestDecodeKey_LegacyBase64(t *testing.T) {
-	// Simulate old base64-encoded key
-	legacyKey := EncodeKey("sk-test-legacy-key")
-	// Force it to base64 format (bypass encryption)
+	// Old base64-encoded key from before AES-GCM migration
 	base64Key := "c2stdGVzdC1sZWdhY3kt" // "sk-test-legacy-" in base64 (short, won't be isEncrypted)
 
 	decoded := DecodeKey(base64Key)
@@ -81,5 +79,18 @@ func TestDecodeKey_LegacyBase64(t *testing.T) {
 	if decoded == "" {
 		t.Error("DecodeKey should not return empty for valid base64")
 	}
-	_ = legacyKey
+}
+
+func TestEncodeKey_ErrorOnEncryptFailure(t *testing.T) {
+	// EncodeKey should succeed under normal conditions
+	enc, err := EncodeKey("sk-test-key-12345")
+	if err != nil {
+		t.Fatalf("EncodeKey: %v", err)
+	}
+	if enc == "" {
+		t.Error("EncodeKey should return non-empty string")
+	}
+	if !isEncrypted(enc) {
+		t.Error("EncodeKey should return an encrypted value")
+	}
 }

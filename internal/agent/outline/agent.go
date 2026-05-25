@@ -87,18 +87,12 @@ func (a *Agent) CreateNode(ctx context.Context, parentID, title, summary string)
 }
 
 func (a *Agent) UpdateNode(ctx context.Context, id, title, summary, status string) error {
-	updates := map[string]interface{}{}
-	if title != "" {
-		updates["title"] = title
-	}
-	if summary != "" {
-		updates["summary"] = summary
+	updates := map[string]interface{}{
+		"title":   title,
+		"summary": summary,
 	}
 	if status != "" {
 		updates["status"] = status
-	}
-	if len(updates) == 0 {
-		return nil
 	}
 	return a.db.WithContext(ctx).Model(&models.OutlineNode{}).Where("id = ?", id).Updates(updates).Error
 }

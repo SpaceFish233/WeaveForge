@@ -53,13 +53,14 @@ func (s *VolumeService) UpdateVolume(id, name string) error {
 }
 
 func (s *VolumeService) DeleteVolume(id string) error {
-	// Clear volume_id from chapters in this volume first
-	if err := s.db.Model(&models.Chapter{}).
-		Where("volume_id = ?", id).
-		Update("volume_id", "").Error; err != nil {
-		return err
-	}
-	return s.db.Where("id = ?", id).Delete(&models.Volume{}).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Chapter{}).
+			Where("volume_id = ?", id).
+			Update("volume_id", "").Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", id).Delete(&models.Volume{}).Error
+	})
 }
 
 func (s *VolumeService) GetVolume(id string) (models.Volume, error) {

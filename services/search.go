@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -40,7 +41,6 @@ func (s *SearchService) SearchAll(keyword, scope string, caseSensitive, wholeWor
 		return nil, nil
 	}
 
-	// Get chapters based on scope
 	chapters, err := s.getChaptersByScope(scope, currentChapterID, currentVolumeID)
 	if err != nil {
 		return nil, err
@@ -69,33 +69,117 @@ type match struct {
 	length int
 }
 
+// htmlTextRange maps a plain-text rune range [runeOffset, runeOffset+runeLength) to
+// the corresponding byte range in the original HTML source. HTML tags and entities
+// are skipped when counting runes, so the returned byte positions can be used to
+// splice the original HTML string without losing formatting.
+//
+// Returns (htmlByteStart, htmlByteEnd, ok). ok is false when the rune range is
+// out of bounds.
+func htmlTextRange(htmlStr string, runeOffset, runeLength int) (int, int, bool) {
+	if runeOffset < 0 || runeLength < 0 {
+		return 0, 0, false
+	}
+
+	var htmlStart, htmlEnd int
+	htmlStart = -1
+	runePos := 0
+	htmlPos := 0
+	remaining := htmlStr
+
+	for len(remaining) > 0 {
+		if remaining[0] == '<' {
+			// Skip HTML tag
+			close := strings.IndexByte(remaining, '>')
+			if close < 0 {
+				break
+			}
+			htmlPos += close + 1
+			remaining = remaining[close+1:]
+			continue
+		}
+
+		if remaining[0] == '&' {
+			// Skip HTML entity (counts as one rune in decoded text)
+			semi := strings.IndexByte(remaining, ';')
+			if semi < 0 {
+				// Malformed entity, treat as text
+				_, sz := utf8.DecodeRuneInString(remaining)
+				if runePos == runeOffset {
+					htmlStart = htmlPos
+				}
+				runePos++
+				if runePos == runeOffset+runeLength {
+					htmlEnd = htmlPos + sz
+					return htmlStart, htmlEnd, true
+				}
+				htmlPos += sz
+				remaining = remaining[sz:]
+				continue
+			}
+			if runePos == runeOffset {
+				htmlStart = htmlPos
+			}
+			runePos++
+			if runePos == runeOffset+runeLength {
+				htmlEnd = htmlPos + semi + 1
+				return htmlStart, htmlEnd, true
+			}
+			htmlPos += semi + 1
+			remaining = remaining[semi+1:]
+			continue
+		}
+
+		// Regular text character
+		_, sz := utf8.DecodeRuneInString(remaining)
+		if runePos == runeOffset {
+			htmlStart = htmlPos
+		}
+		runePos++
+		if runePos == runeOffset+runeLength {
+			htmlEnd = htmlPos + sz
+			return htmlStart, htmlEnd, true
+		}
+		htmlPos += sz
+		remaining = remaining[sz:]
+	}
+
+	// If we matched up to the end
+	if htmlStart >= 0 && runePos >= runeOffset+runeLength {
+		htmlEnd = htmlPos
+		return htmlStart, htmlEnd, true
+	}
+
+	return 0, 0, false
+}
+
 // ReplaceInChapter replaces a single match in a chapter's HTML content.
-// Returns the updated plain text content (caller should set it via UpdateChapter).
+// It operates directly on the HTML source, preserving all formatting tags.
 func (s *SearchService) ReplaceInChapter(chapterID string, offset, length int, replacement string) (string, error) {
 	var ch models.Chapter
 	if err := s.db.First(&ch, "id = ?", chapterID).Error; err != nil {
 		return "", err
 	}
 
-	plainText := stripHTML(ch.Content)
-	runes := []rune(plainText)
-	if offset < 0 || offset+length > len(runes) {
+	htmlStart, htmlEnd, ok := htmlTextRange(ch.Content, offset, length)
+	if !ok || htmlStart < 0 {
 		return "", fmt.Errorf("search: offset out of range")
 	}
 
-	// Build new plain text
-	newRunes := make([]rune, 0, len(runes)+len([]rune(replacement))-length)
-	newRunes = append(newRunes, runes[:offset]...)
-	newRunes = append(newRunes, []rune(replacement)...)
-	newRunes = append(newRunes, runes[offset+length:]...)
+	htmlBytes := []byte(ch.Content)
+	escaped := html.EscapeString(replacement)
+	result := make([]byte, 0, len(htmlBytes)+len(escaped)-length)
+	result = append(result, htmlBytes[:htmlStart]...)
+	result = append(result, []byte(escaped)...)
+	result = append(result, htmlBytes[htmlEnd:]...)
 
-	return string(newRunes), nil
+	return string(result), nil
 }
 
-// BatchReplace replaces multiple matches across chapters.
+// BatchReplace replaces multiple matches across chapters in the HTML source.
+// Replacements operate directly on HTML, preserving all formatting.
 // Returns total replacements done.
 func (s *SearchService) BatchReplace(replacements []ReplaceItem, replacement string) (int, error) {
-	// Group by chapter
 	chapterReplacements := make(map[string][]ReplaceItem)
 	for _, r := range replacements {
 		chapterReplacements[r.ChapterID] = append(chapterReplacements[r.ChapterID], r)
@@ -108,39 +192,33 @@ func (s *SearchService) BatchReplace(replacements []ReplaceItem, replacement str
 			continue
 		}
 
-		plainText := stripHTML(ch.Content)
-		runes := []rune(plainText)
-
-		// Sort by offset descending to avoid offset shift
-		for i := 0; i < len(items)-1; i++ {
+		// Validate no overlapping replacements
+		for i := 0; i < len(items); i++ {
 			for j := i + 1; j < len(items); j++ {
-				if items[j].Offset > items[i].Offset {
-					items[i], items[j] = items[j], items[i]
+				a, b := items[i], items[j]
+				if a.Offset < b.Offset+b.Length && b.Offset < a.Offset+a.Length {
+					return total, fmt.Errorf("overlapping replacements in chapter %s", chapterID)
 				}
 			}
 		}
 
-		// Apply replacements from end to start
-		newRunes := make([]rune, len(runes))
-		copy(newRunes, runes)
+		// Sort by offset descending to apply from end to start
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].Offset > items[j].Offset
+		})
+
+		htmlContent := ch.Content
 		for _, item := range items {
-			if item.Offset < 0 || item.Offset+item.Length > len(newRunes) {
+			htmlStart, htmlEnd, ok := htmlTextRange(htmlContent, item.Offset, item.Length)
+			if !ok || htmlStart < 0 || htmlEnd < htmlStart {
 				continue
 			}
-			prefix := newRunes[:item.Offset]
-			suffix := newRunes[item.Offset+item.Length:]
-			repl := []rune(replacement)
-			combined := make([]rune, 0, len(prefix)+len(repl)+len(suffix))
-			combined = append(combined, prefix...)
-			combined = append(combined, repl...)
-			combined = append(combined, suffix...)
-			newRunes = combined
+			escaped := html.EscapeString(replacement)
+			htmlContent = htmlContent[:htmlStart] + escaped + htmlContent[htmlEnd:]
 			total++
 		}
 
-		// Update chapter content (as plain text wrapped in paragraphs)
-		newContent := plainTextToHTML(string(newRunes))
-		if err := s.db.Model(&models.Chapter{}).Where("id = ?", chapterID).Update("content", newContent).Error; err != nil {
+		if err := s.db.Model(&models.Chapter{}).Where("id = ?", chapterID).Update("content", htmlContent).Error; err != nil {
 			return total, err
 		}
 	}
@@ -163,7 +241,6 @@ func (s *SearchService) getChaptersByScope(scope, currentChapterID, currentVolum
 		}
 		query = query.Where("volume_id = ?", currentVolumeID)
 	default: // "all"
-		// no filter
 	}
 
 	if err := query.Find(&chapters).Error; err != nil {
@@ -173,16 +250,13 @@ func (s *SearchService) getChaptersByScope(scope, currentChapterID, currentVolum
 }
 
 // stripHTML removes HTML tags and decodes entities to get plain text.
+// Used only for search (finding match positions), not for replacement.
 func stripHTML(htmlStr string) string {
-	// Remove tags
 	re := regexp.MustCompile(`<[^>]*>`)
 	plain := re.ReplaceAllString(htmlStr, "")
-	// Decode HTML entities
 	plain = html.UnescapeString(plain)
-	// Normalize whitespace
 	plain = strings.ReplaceAll(plain, "\n", " ")
 	plain = strings.ReplaceAll(plain, "\r", "")
-	// Collapse multiple spaces
 	spaceRe := regexp.MustCompile(`\s+`)
 	plain = spaceRe.ReplaceAllString(plain, " ")
 	return strings.TrimSpace(plain)
@@ -198,7 +272,6 @@ func findMatches(text, keyword string, caseSensitive, wholeWord, useRegex bool) 
 	}
 
 	if useRegex {
-		// Regex mode
 		flags := ""
 		if !caseSensitive {
 			flags = "(?i)"
@@ -207,10 +280,8 @@ func findMatches(text, keyword string, caseSensitive, wholeWord, useRegex bool) 
 		if err != nil {
 			return nil
 		}
-		// Find all matches in rune space
 		byteText := string(textRunes)
 		for _, loc := range re.FindAllStringIndex(byteText, -1) {
-			// Convert byte offsets to rune offsets
 			runeOffset := utf8.RuneCountInString(byteText[:loc[0]])
 			runeLen := utf8.RuneCountInString(byteText[loc[0]:loc[1]])
 			matches = append(matches, match{offset: runeOffset, length: runeLen})
@@ -218,7 +289,6 @@ func findMatches(text, keyword string, caseSensitive, wholeWord, useRegex bool) 
 		return matches
 	}
 
-	// String matching mode
 	searchText := text
 	searchKeyword := keyword
 	if !caseSensitive {
@@ -232,7 +302,6 @@ func findMatches(text, keyword string, caseSensitive, wholeWord, useRegex bool) 
 	for i := 0; i <= len(searchRunes)-len(keyRunes); i++ {
 		if equalRunes(searchRunes[i:i+len(keyRunes)], keyRunes) {
 			if wholeWord {
-				// Check word boundaries
 				if i > 0 && isWordChar(searchRunes[i-1]) {
 					continue
 				}
@@ -277,19 +346,4 @@ func extractContext(text string, offset, length int) string {
 		end = len(runes)
 	}
 	return string(runes[start:end])
-}
-
-// plainTextToHTML wraps plain text in <p> tags, splitting on newlines.
-func plainTextToHTML(text string) string {
-	if text == "" {
-		return "<p></p>"
-	}
-	lines := strings.Split(text, "\n")
-	var sb strings.Builder
-	for _, line := range lines {
-		sb.WriteString("<p>")
-		sb.WriteString(html.EscapeString(line))
-		sb.WriteString("</p>")
-	}
-	return sb.String()
 }

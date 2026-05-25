@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"unicode/utf8"
 
 	"weaveforge/internal/llm"
+	"weaveforge/internal/textutil"
 	"weaveforge/internal/vectordb"
 	"weaveforge/models"
 
@@ -80,15 +82,7 @@ func (a *Agent) GetSetting(ctx context.Context, id string) (*models.WorldSetting
 }
 
 func (a *Agent) UpdateSetting(ctx context.Context, id, title, content, settingType string) error {
-	if err := a.store.DeleteDocuments(ctx, map[string]string{"setting_id": id}); err != nil {
-		return err
-	}
-	if err := a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return tx.Model(&models.WorldSetting{}).Where("id = ?", id).
-			Updates(map[string]interface{}{"title": title, "content": content, "type": settingType}).Error
-	}); err != nil {
-		return err
-	}
+	// Generate new chunks and embeddings first
 	chunks := chunkText(content, 500)
 	var docs []vectordb.Document
 	for i, chunk := range chunks {
@@ -103,7 +97,27 @@ func (a *Agent) UpdateSetting(ctx context.Context, id, title, content, settingTy
 			ID: uuid.New().String(), Content: chunk, Metadata: string(meta), Embedding: emb,
 		})
 	}
-	return a.store.AddDocuments(ctx, docs)
+
+	// Update vector store first: add new docs before deleting old ones so at
+	// least one copy always exists. Vector ops are best-effort; if old doc
+	// deletion fails, duplicates may remain but search results are unaffected.
+	if len(docs) > 0 {
+		if err := a.store.AddDocuments(ctx, docs); err != nil {
+			return fmt.Errorf("setting: add new docs: %w", err)
+		}
+	}
+	if err := a.store.DeleteDocuments(ctx, map[string]string{"setting_id": id}); err != nil {
+		log.Printf("setting: delete old vector docs for %s: %v (non-fatal)", id, err)
+	}
+
+	// Update the database record last; if vector ops fail above, DB stays unchanged.
+	if err := a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return tx.Model(&models.WorldSetting{}).Where("id = ?", id).
+			Updates(map[string]interface{}{"title": title, "content": content, "type": settingType}).Error
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (a *Agent) DeleteSetting(ctx context.Context, id string) error {
@@ -166,8 +180,7 @@ func countOccurrences(text, keyword string, caseSensitive, wholeWord bool) (int,
 			return 0, nil
 		}
 		matches := re.FindAllStringIndex(src, -1)
-		// Convert byte offsets to rune offsets
-		byteToRune := buildByteToRuneMap(src)
+		byteToRune := textutil.ByteToRuneMap(src)
 		positions := make([]int, len(matches))
 		for i, m := range matches {
 			positions[i] = byteToRune[m[0]]
@@ -175,8 +188,7 @@ func countOccurrences(text, keyword string, caseSensitive, wholeWord bool) (int,
 		return len(matches), positions
 	}
 
-	// Convert byte offsets to rune offsets
-	byteToRune := buildByteToRuneMap(src)
+	byteToRune := textutil.ByteToRuneMap(src)
 	var positions []int
 	offset := 0
 	for {
@@ -188,18 +200,6 @@ func countOccurrences(text, keyword string, caseSensitive, wholeWord bool) (int,
 		offset += idx + len(kw)
 	}
 	return len(positions), positions
-}
-
-// buildByteToRuneMap builds a mapping from byte offset to rune offset for a string.
-func buildByteToRuneMap(s string) []int {
-	m := make([]int, len(s)+1)
-	runePos := 0
-	for i := range s {
-		m[i] = runePos
-		runePos++
-	}
-	m[len(s)] = runePos
-	return m
 }
 
 func extractSnippet(text string, runePos int, keyword string, contextWidth int) string {
@@ -235,8 +235,8 @@ func extractSnippet(text string, runePos int, keyword string, contextWidth int) 
 const maxSnippets = 20
 const contextChars = 200
 
-func (a *Agent) ValidateSettingConflict(settingID string, chapterContent string) (*ConflictResult, error) {
-	s, err := a.GetSetting(context.Background(), settingID)
+func (a *Agent) ValidateSettingConflict(ctx context.Context, settingID string, chapterContent string) (*ConflictResult, error) {
+	s, err := a.GetSetting(ctx, settingID)
 	if err != nil {
 		return nil, fmt.Errorf("setting: get: %w", err)
 	}
@@ -263,7 +263,7 @@ func (a *Agent) ValidateSettingConflict(settingID string, chapterContent string)
 	}
 
 	prompt := buildValidationPrompt(s.Title, s.Content, snippets)
-	resp, err := a.llm.ChatCompletion(context.Background(), []llm.Message{
+	resp, err := a.llm.ChatCompletion(ctx, []llm.Message{
 		{Role: "system", Content: "你是一个网络小说设定一致性检查专家。检查小说段落是否与设定存在冲突。返回JSON格式结果，包含 has_conflict(布尔)、conflict_desc(冲突描述，无不填)、suggested_fix(修改建议，无不填)、reference_text(引用相关设定原文，无不填)。只输出JSON，不要其他文字。"},
 		{Role: "user", Content: prompt},
 	}, a.chatModel, llm.ChatOption{Temperature: 0.1})

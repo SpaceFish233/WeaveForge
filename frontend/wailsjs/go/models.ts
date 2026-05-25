@@ -1101,6 +1101,233 @@ export namespace stats {
 
 }
 
+export namespace style {
+	
+	export class AIFlavorIssue {
+	    description: string;
+	    evidence: string;
+	    fix_hint: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AIFlavorIssue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.description = source["description"];
+	        this.evidence = source["evidence"];
+	        this.fix_hint = source["fix_hint"];
+	    }
+	}
+	export class AIFlavorDimension {
+	    label: string;
+	    severity: string;
+	    issues: AIFlavorIssue[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AIFlavorDimension(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.severity = source["severity"];
+	        this.issues = this.convertValues(source["issues"], AIFlavorIssue);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class AIFlavorReport {
+	    dimensions: AIFlavorDimension[];
+	    summary: string;
+	    checked_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AIFlavorReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.dimensions = this.convertValues(source["dimensions"], AIFlavorDimension);
+	        this.summary = source["summary"];
+	        this.checked_at = source["checked_at"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ConstraintIssue {
+	    category: string;
+	    severity: string;
+	    description: string;
+	    evidence: string;
+	    fix_hint: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConstraintIssue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.category = source["category"];
+	        this.severity = source["severity"];
+	        this.description = source["description"];
+	        this.evidence = source["evidence"];
+	        this.fix_hint = source["fix_hint"];
+	    }
+	}
+	export class ConstraintCheckResult {
+	    passed: boolean;
+	    issues: ConstraintIssue[];
+	    blocking_count: number;
+	    summary: string;
+	    checked_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConstraintCheckResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.passed = source["passed"];
+	        this.issues = this.convertValues(source["issues"], ConstraintIssue);
+	        this.blocking_count = source["blocking_count"];
+	        this.summary = source["summary"];
+	        this.checked_at = source["checked_at"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class HookCheckResult {
+	    has_hook: boolean;
+	    hook_type: string;
+	    hook_strength: string;
+	    unresolved_questions: string[];
+	    closing_analysis: string;
+	    suggestion: string;
+	    checked_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HookCheckResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.has_hook = source["has_hook"];
+	        this.hook_type = source["hook_type"];
+	        this.hook_strength = source["hook_strength"];
+	        this.unresolved_questions = source["unresolved_questions"];
+	        this.closing_analysis = source["closing_analysis"];
+	        this.suggestion = source["suggestion"];
+	        this.checked_at = source["checked_at"];
+	    }
+	}
+	export class PlaceholderMatch {
+	    pattern: string;
+	    type: string;
+	    start_index: number;
+	    end_index: number;
+	    context: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlaceholderMatch(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pattern = source["pattern"];
+	        this.type = source["type"];
+	        this.start_index = source["start_index"];
+	        this.end_index = source["end_index"];
+	        this.context = source["context"];
+	    }
+	}
+	export class PlaceholderScanResult {
+	    clean: boolean;
+	    matches: PlaceholderMatch[];
+	    checked_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlaceholderScanResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.clean = source["clean"];
+	        this.matches = this.convertValues(source["matches"], PlaceholderMatch);
+	        this.checked_at = source["checked_at"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace timeline {
 	
 	export class ConflictInfo {

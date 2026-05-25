@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -64,13 +65,12 @@ func configPath() (string, error) {
 	return filepath.Join(dir, "config.json"), nil
 }
 
-func EncodeKey(key string) string {
+func EncodeKey(key string) (string, error) {
 	enc, err := encrypt(key)
 	if err != nil {
-		// Fallback to base64 if encryption fails
-		return base64.StdEncoding.EncodeToString([]byte(key))
+		return "", fmt.Errorf("config: encrypt key: %w", err)
 	}
-	return enc
+	return enc, nil
 }
 
 func DecodeKey(encoded string) string {
@@ -87,7 +87,15 @@ func DecodeKey(encoded string) string {
 	if err != nil {
 		return encoded
 	}
-	return string(data)
+	// Validate that the decoded result looks like a valid API key (printable ASCII).
+	// If decoding from a different machine, this will be binary garbage — return "".
+	result := string(data)
+	for _, r := range result {
+		if r > 127 || r < 32 {
+			return "" // binary data from cross-machine migration — signal re-entry needed
+		}
+	}
+	return result
 }
 
 func Load() (*Config, error) {
@@ -122,7 +130,11 @@ func Load() (*Config, error) {
 func Save(cfg *Config) error {
 	// Always encrypt the API key if it's not already encrypted
 	if cfg.LLM.APIKey != "" && !isEncrypted(cfg.LLM.APIKey) {
-		cfg.LLM.APIKey = EncodeKey(cfg.LLM.APIKey)
+		enc, err := EncodeKey(cfg.LLM.APIKey)
+		if err != nil {
+			return err
+		}
+		cfg.LLM.APIKey = enc
 	}
 	path, err := configPath()
 	if err != nil {

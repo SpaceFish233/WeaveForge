@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -13,12 +14,33 @@ import (
 
 const maxRetries = 3
 
+// truncateBody limits response body logged in errors to avoid leaking sensitive data.
+func truncateBody(body []byte, maxLen int) string {
+	if len(body) <= maxLen {
+		return string(body)
+	}
+	return string(body[:maxLen]) + "..."
+}
+
 // doWithRetry executes an HTTP request with exponential backoff for retryable errors (429, 5xx).
+// The request body is cached before the loop so it can be re-sent on retry.
 func (c *Client) doWithRetry(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
+	// Read the request body into a buffer so we can re-create it on retry.
+	var reqBodyBytes []byte
+	if req.Body != nil {
+		var err error
+		reqBodyBytes, err = io.ReadAll(req.Body)
+		req.Body.Close()
+		if err != nil {
+			return nil, nil, fmt.Errorf("read request body: %w", err)
+		}
+	}
+
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
-			backoff := time.Duration(1<<uint(attempt-1)) * time.Second // 1s, 2s
+			baseSec := 1 << (attempt - 1) // 1, 2 seconds
+			backoff := time.Duration(float64(baseSec) * (0.5 + rand.Float64()*0.5) * float64(time.Second))
 			select {
 			case <-ctx.Done():
 				return nil, nil, ctx.Err()
@@ -26,7 +48,11 @@ func (c *Client) doWithRetry(ctx context.Context, req *http.Request) (*http.Resp
 			}
 		}
 
-		// Clone the body for retry (since it gets consumed)
+		// Re-create request body for each attempt
+		if reqBodyBytes != nil {
+			req.Body = io.NopCloser(bytes.NewReader(reqBodyBytes))
+		}
+
 		resp, err := c.http.Do(req)
 		if err != nil {
 			lastErr = err
@@ -45,12 +71,12 @@ func (c *Client) doWithRetry(ctx context.Context, req *http.Request) (*http.Resp
 
 		// Only retry on 429 (rate limit) and 5xx (server error)
 		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
-			lastErr = fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+			lastErr = fmt.Errorf("status %d: %s", resp.StatusCode, truncateBody(body, 500))
 			continue
 		}
 
 		// Non-retryable error (4xx except 429)
-		return nil, nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+		return nil, nil, fmt.Errorf("status %d: %s", resp.StatusCode, truncateBody(body, 500))
 	}
 	return nil, nil, fmt.Errorf("max retries exceeded: %w", lastErr)
 }

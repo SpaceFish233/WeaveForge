@@ -4,13 +4,10 @@ import { DetectTypos, UpdateChapter } from '../../wailsjs/go/main/App'
 
 interface TypoSuggestion {
   sentence: string
-  start_index: number   // full-content absolute rune index (from backend)
-  end_index: number     // full-content absolute rune index (from backend)
+  start_index: number   // absolute rune offset in full trimmed content (from backend)
+  end_index: number     // absolute rune offset in full trimmed content (from backend)
   error_word: string
   suggestion: string
-  // Computed locally for display: sentence-relative indices
-  _sentenceStart?: number
-  _sentenceEnd?: number
 }
 
 const props = defineProps<{
@@ -28,6 +25,7 @@ const detectDone = ref(false)
 const detectError = ref('')
 const typos = ref<TypoSuggestion[]>([])
 const correctingIdx = ref<number | null>(null)
+let detectReqId = 0
 
 async function handleDetect() {
   const trimmed = props.chapterContent.trim()
@@ -44,49 +42,44 @@ async function handleDetect() {
   detectDone.value = false
   typos.value = []
 
+  const reqId = ++detectReqId
   try {
     const results = await DetectTypos(props.chapterContent)
-    const contentRunes = Array.from(props.chapterContent)
-    const allResults: TypoSuggestion[] = []
-
-    for (const r of results) {
-      // The backend returns sentence-relative indices (start_index/end_index).
-      // Find the sentence in full content to compute full-content absolute indices.
-      const sr = Array.from(r.sentence)
-      let sentenceOffset = -1
-      for (let k = 0; k <= contentRunes.length - sr.length; k++) {
-        let match = true
-        for (let j = 0; j < sr.length; j++) {
-          if (contentRunes[k + j] !== sr[j]) { match = false; break }
-        }
-        if (match) { sentenceOffset = k; break }
-      }
-      if (sentenceOffset < 0) continue // sentence not found, skip
-      allResults.push({
-        sentence: r.sentence,
-        start_index: sentenceOffset + r.start_index,   // full-content absolute
-        end_index: sentenceOffset + r.end_index,         // full-content absolute
-        error_word: r.error_word,
-        suggestion: r.suggestion,
-        _sentenceStart: r.start_index,   // sentence-relative for display
-        _sentenceEnd: r.end_index,       // sentence-relative for display
-      })
-    }
-
-    typos.value = allResults
+    if (reqId !== detectReqId) return
+    // Backend now returns absolute rune offsets in the trimmed content.
+    const trimOffset = Array.from(props.chapterContent).length - Array.from(trimmed).length
+    typos.value = results.map(r => ({
+      ...r,
+      start_index: r.start_index + trimOffset,
+      end_index: r.end_index + trimOffset,
+    }))
     detectDone.value = true
   } catch (e: any) {
+    if (reqId !== detectReqId) return
     detectError.value = `检测失败：${e?.message || e || '未知错误'}`
   } finally {
-    detecting.value = false
+    if (reqId === detectReqId) {
+      detecting.value = false
+    }
   }
 }
 
-function highlightSentence(sentence: string, startIdx: number, endIdx: number): string {
+// Find error_word within sentence and highlight it.
+function highlightSentence(sentence: string, errorWord: string): string {
   const runes = Array.from(sentence)
-  const before = runes.slice(0, startIdx).join('')
-  const error = runes.slice(startIdx, endIdx).join('')
-  const after = runes.slice(endIdx).join('')
+  const ewRunes = Array.from(errorWord)
+  let pos = -1
+  for (let i = 0; i <= runes.length - ewRunes.length; i++) {
+    let match = true
+    for (let j = 0; j < ewRunes.length; j++) {
+      if (runes[i + j] !== ewRunes[j]) { match = false; break }
+    }
+    if (match) { pos = i; break }
+  }
+  if (pos < 0) return escapeHtml(sentence)
+  const before = runes.slice(0, pos).join('')
+  const error = runes.slice(pos, pos + ewRunes.length).join('')
+  const after = runes.slice(pos + ewRunes.length).join('')
   return `${escapeHtml(before)}<span class="typo-highlight">${escapeHtml(error)}</span>${escapeHtml(after)}`
 }
 
@@ -94,13 +87,27 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+// Check whether the typo error_word still matches the content at its recorded position.
+function validateTypoIndex(content: string, t: TypoSuggestion): boolean {
+  const runes = Array.from(content)
+  if (t.start_index < 0 || t.end_index > runes.length || t.start_index >= t.end_index) return false
+  const actual = runes.slice(t.start_index, t.end_index).join('')
+  return actual === t.error_word
+}
+
 async function handleCorrectSingle(idx: number) {
   if (!props.chapterID) return
   correctingIdx.value = idx
   // Flush any pending auto-save before applying correction
   emit('flushAutoSave')
+  // Wait a tick for flush to complete
+  await new Promise(resolve => setTimeout(resolve, 100))
   try {
     const t = typos.value[idx]
+    if (!validateTypoIndex(props.chapterContent, t)) {
+      typos.value.splice(idx, 1) // remove stale result
+      return
+    }
     const runes = Array.from(props.chapterContent)
     const before = runes.slice(0, t.start_index).join('')
     const after = runes.slice(t.end_index).join('')
@@ -120,11 +127,22 @@ async function handleCorrectAll() {
   correctingIdx.value = -1
   // Flush any pending auto-save before applying corrections
   emit('flushAutoSave')
+  await new Promise(resolve => setTimeout(resolve, 100))
   try {
     // Sort by start_index descending to replace from end to start
     const sorted = [...typos.value].sort((a, b) => b.start_index - a.start_index)
-    let runes = Array.from(props.chapterContent)
+    // Filter overlapping ranges (keep the first one when sorted by descending position)
+    const nonOverlapping: TypoSuggestion[] = []
     for (const t of sorted) {
+      const overlaps = nonOverlapping.some(existing =>
+        t.start_index < existing.end_index && t.end_index > existing.start_index
+      )
+      if (!overlaps && validateTypoIndex(props.chapterContent, t)) {
+        nonOverlapping.push(t)
+      }
+    }
+    let runes = Array.from(props.chapterContent)
+    for (const t of nonOverlapping) {
       const before = runes.slice(0, t.start_index)
       const after = runes.slice(t.end_index)
       runes = [...before, ...Array.from(t.suggestion), ...after]
@@ -181,7 +199,7 @@ async function handleCorrectAll() {
         :key="idx"
         class="typo-item"
       >
-        <div class="typo-sentence" v-html="highlightSentence(t.sentence, t._sentenceStart ?? t.start_index, t._sentenceEnd ?? t.end_index)"></div>
+        <div class="typo-sentence" v-html="highlightSentence(t.sentence, t.error_word)"></div>
         <div class="typo-suggestion">
           → 建议改为：<span class="suggestion-text">{{ t.suggestion }}</span>
         </div>

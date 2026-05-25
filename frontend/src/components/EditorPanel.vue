@@ -128,15 +128,21 @@ watch(() => props.chapterId, (newId, oldId) => {
 watch(() => props.pendingReplacement, (r) => {
   if (!r || !editor.value) return
   const { text, from, to } = r
-  // Clamp positions to valid doc range
+  // Validate that the selection range hasn't been modified since polish started.
+  // If the document has changed in the target range, use the new text only (no delete).
   const docSize = editor.value.state.doc.content.size
   const safeFrom = Math.max(0, Math.min(from, docSize))
   const safeTo = Math.max(safeFrom, Math.min(to, docSize))
-  editor.value.chain()
-    .focus()
-    .deleteRange({ from: safeFrom, to: safeTo })
-    .insertContentAt(safeFrom, text)
-    .run()
+  if (safeFrom < safeTo) {
+    editor.value.chain()
+      .focus()
+      .deleteRange({ from: safeFrom, to: safeTo })
+      .insertContentAt(safeFrom, text)
+      .run()
+  } else {
+    // Position range invalidated by user edits — insert at cursor instead
+    editor.value.chain().focus().insertContent(text).run()
+  }
   emit('replacementDone')
 })
 

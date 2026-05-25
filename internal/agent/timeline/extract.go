@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 var timePatterns = []struct {
@@ -166,20 +167,14 @@ func extractContext(content, match string, radius int) string {
 		return ""
 	}
 	runes := []rune(content)
-	matchRunes := []rune(match)
-	matchIdx := 0
-	for i := range runes {
-		if i+len(matchRunes) <= len(runes) && string(runes[i:i+len(matchRunes)]) == match {
-			matchIdx = i
-			break
-		}
-	}
+	runeIdx := utf8.RuneCountInString(content[:idx])
+	matchRuneLen := utf8.RuneCountInString(match)
 
-	start := matchIdx - radius
+	start := runeIdx - radius
 	if start < 0 {
 		start = 0
 	}
-	end := matchIdx + len(matchRunes) + radius
+	end := runeIdx + matchRuneLen + radius
 	if end > len(runes) {
 		end = len(runes)
 	}

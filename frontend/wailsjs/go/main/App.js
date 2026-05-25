@@ -14,6 +14,14 @@ export function BindOutlineChapter(arg1, arg2) {
   return window['go']['main']['App']['BindOutlineChapter'](arg1, arg2);
 }
 
+export function CheckChapterHook(arg1, arg2) {
+  return window['go']['main']['App']['CheckChapterHook'](arg1, arg2);
+}
+
+export function CheckWritingConstraints(arg1) {
+  return window['go']['main']['App']['CheckWritingConstraints'](arg1);
+}
+
 export function ConfirmForeshadowing(arg1, arg2) {
   return window['go']['main']['App']['ConfirmForeshadowing'](arg1, arg2);
 }
@@ -80,6 +88,10 @@ export function DeleteTimelineNode(arg1) {
 
 export function DeleteVolume(arg1) {
   return window['go']['main']['App']['DeleteVolume'](arg1);
+}
+
+export function DetectAIFlavor(arg1) {
+  return window['go']['main']['App']['DetectAIFlavor'](arg1);
 }
 
 export function DetectSettings(arg1, arg2, arg3) {
@@ -274,8 +286,12 @@ export function ScanChaptersForTimeline(arg1) {
   return window['go']['main']['App']['ScanChaptersForTimeline'](arg1);
 }
 
-export function SearchChapters(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['SearchChapters'](arg1, arg2, arg3, arg4, arg5);
+export function ScanPlaceholders(arg1) {
+  return window['go']['main']['App']['ScanPlaceholders'](arg1);
+}
+
+export function SearchChapters(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['SearchChapters'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
 export function SelectExeFile() {

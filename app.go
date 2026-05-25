@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"weaveforge/internal/agent/character"
 	"weaveforge/internal/agent/foreshadow"
@@ -83,8 +85,15 @@ func (a *App) UpdateChapter(chapterID, content string) error {
 	}
 
 	// Update daily stats in background (non-blocking)
+	// Use a fresh background context with timeout to avoid depending on a.ctx lifecycle.
 	if a.statsAgent != nil {
-		go a.statsAgent.UpdateDailyStats(a.ctx, chapterID, oldContent, content)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := a.statsAgent.UpdateDailyStats(ctx, chapterID, oldContent, content); err != nil {
+				log.Printf("UpdateDailyStats failed: %v", err)
+			}
+		}()
 	}
 
 	return nil
@@ -104,7 +113,17 @@ func (a *App) ImportDocument(filePath string) ([]string, error) {
 	}
 	return a.importChapters(chs)
 }
-func (a *App) ImportContent(filename, content string) ([]string, error) { ext := ""; if idx := strings.LastIndex(filename, "."); idx >= 0 { ext = filename[idx:] }; return a.importChapters(parser.ParseContent(content, ext)) }
+func (a *App) ImportContent(filename, content string) ([]string, error) {
+	const maxContentBytes = 10 * 1024 * 1024 // 10 MB
+	if len(content) > maxContentBytes {
+		return nil, fmt.Errorf("content too large: %d bytes (max %d)", len(content), maxContentBytes)
+	}
+	ext := ""
+	if idx := strings.LastIndex(filename, "."); idx >= 0 {
+		ext = filename[idx:]
+	}
+	return a.importChapters(parser.ParseContent(content, ext))
+}
 func (a *App) importChapters(chs []parser.ParsedChapter) ([]string, error) { var ids []string; for _, ch := range chs { id, err := a.chapter.CreateChapter(ch.Title, ch.Content, ""); if err != nil { return ids, err }; ids = append(ids, id) }; return ids, nil }
 
 // ─── Volume API ─────────────────────────────────────────────────────
@@ -130,12 +149,36 @@ func (a *App) GetSetting(id string) (*models.WorldSetting, error)         { retu
 func (a *App) UpdateSetting(id, title, content, settingType string) error  { return a.settingAgent.UpdateSetting(a.ctx, id, title, content, settingType) }
 func (a *App) DeleteSetting(id string) error                               { return a.settingAgent.DeleteSetting(a.ctx, id) }
 func (a *App) DetectSettings(chapterContent string, caseSensitive, wholeWord bool) ([]setting.SettingHit, error) { return a.settingAgent.DetectSettingsInChapter(chapterContent, caseSensitive, wholeWord) }
-func (a *App) ValidateSetting(settingID, chapterContent string) (*setting.ConflictResult, error) { return a.settingAgent.ValidateSettingConflict(settingID, chapterContent) }
+func (a *App) ValidateSetting(settingID, chapterContent string) (*setting.ConflictResult, error) { return a.settingAgent.ValidateSettingConflict(a.ctx, settingID, chapterContent) }
 
 // ─── Polish API ─────────────────────────────────────────────────────
 
 func (a *App) PolishWithInstruction(text, instruction, profileID string) (string, error) {
 	return a.styleAgent.PolishWithInstruction(a.ctx, text, instruction, profileID)
+}
+
+// ─── Anti-AI Flavor Detection API ─────────────────────────────────────
+
+func (a *App) DetectAIFlavor(text string) (style.AIFlavorReport, error) {
+	return a.styleAgent.DetectAIFlavor(a.ctx, text)
+}
+
+// ─── Chapter Hook Check API ───────────────────────────────────────────
+
+func (a *App) CheckChapterHook(chapterContent, prevChapterContent string) (style.HookCheckResult, error) {
+	return a.styleAgent.CheckChapterHook(a.ctx, chapterContent, prevChapterContent)
+}
+
+// ─── Pre-Write Constraint Check API ───────────────────────────────────
+
+func (a *App) CheckWritingConstraints(chapterContent string) (style.ConstraintCheckResult, error) {
+	return a.styleAgent.CheckWritingConstraints(a.ctx, chapterContent)
+}
+
+// ─── Placeholder Scan API ─────────────────────────────────────────────
+
+func (a *App) ScanPlaceholders(text string) style.PlaceholderScanResult {
+	return a.styleAgent.ScanPlaceholders(text)
 }
 
 // ─── Foreshadow Agent API ───────────────────────────────────────────
@@ -169,14 +212,7 @@ func (a *App) SaveGraphPositions(positions []relationship.NodePosition) error { 
 
 // ─── Search API ─────────────────────────────────────────────────────
 
-func (a *App) SearchChapters(keyword, scope string, caseSensitive, wholeWord, useRegex bool) ([]services.SearchResult, error) {
-	// Get current chapter ID and volume ID from context if needed
-	var currentChapterID, currentVolumeID string
-	// For "volume" scope, we need the current chapter's volume
-	if scope == "volume" {
-		// The frontend should pass the current chapter context; for now, we'll use a simple approach
-		// The search service will handle the scope filtering
-	}
+func (a *App) SearchChapters(keyword, scope string, caseSensitive, wholeWord, useRegex bool, currentChapterID, currentVolumeID string) ([]services.SearchResult, error) {
 	return a.search.SearchAll(keyword, scope, caseSensitive, wholeWord, useRegex, currentChapterID, currentVolumeID)
 }
 
@@ -282,10 +318,9 @@ func maskAPIKey(key string) string {
 func (a *App) GetConfig() *config.Config {
 	a.configMu.RLock()
 	defer a.configMu.RUnlock()
-	// Return a copy with API key masked to avoid exposing plaintext
-	masked := *a.appConfig
-	masked.LLM.APIKey = maskAPIKey(a.appConfig.LLM.APIKey)
-	return &masked
+	// Return a copy (API key is already decrypted in memory, type=password hides it in the UI)
+	copy := *a.appConfig
+	return &copy
 }
 func (a *App) UpdateConfig(cfg *config.Config) error {
 	// If the submitted API key is the masked value, preserve the original key

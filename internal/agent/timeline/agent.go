@@ -124,11 +124,12 @@ func (a *Agent) UpdateNode(ctx context.Context, id string, offsetDays float64, l
 }
 
 func (a *Agent) DeleteNode(ctx context.Context, id string) error {
-	// Delete events first
-	if err := a.db.WithContext(ctx).Where("node_id = ?", id).Delete(&models.TimelineEvent{}).Error; err != nil {
-		return err
-	}
-	return a.db.WithContext(ctx).Delete(&models.TimelineNode{}, "id = ?", id).Error
+	return a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("node_id = ?", id).Delete(&models.TimelineEvent{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&models.TimelineNode{}, "id = ?", id).Error
+	})
 }
 
 // ─── Event CRUD ─────────────────────────────────────────────────────
@@ -356,12 +357,24 @@ func (a *Agent) detectConflicts(ctx context.Context, nodes []NodeWithEvents) []C
 func (a *Agent) extractFromChapter(ctx context.Context, ch models.Chapter) []extractedEvent {
 	// First, try regex extraction
 	regexEvents := extractByRegex(ch.Content, ch.ID)
-
 	// Then use LLM for richer extraction
 	llmEvents := a.extractByLLM(ctx, ch.Content, ch.ID)
 
-	// Merge: prefer LLM results, fill gaps with regex
-	all := append(llmEvents, regexEvents...)
+	// Deduplicate: prefer LLM results, skip regex events that overlap
+	// Two events are duplicates if they share the same RawTimeExpr or Title.
+	seen := make(map[string]bool)
+	var all []extractedEvent
+	for _, ev := range llmEvents {
+		key := strings.ToLower(strings.TrimSpace(ev.RawTimeExpr + "|" + ev.Title))
+		seen[key] = true
+		all = append(all, ev)
+	}
+	for _, ev := range regexEvents {
+		key := strings.ToLower(strings.TrimSpace(ev.RawTimeExpr + "|" + ev.Title))
+		if !seen[key] {
+			all = append(all, ev)
+		}
+	}
 	return all
 }
 

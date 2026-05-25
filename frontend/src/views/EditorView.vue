@@ -58,7 +58,10 @@ async function handleSelectChapter(id: string) {
     }
   } catch (err) {
     console.error('Failed to load chapter:', err)
-    if (currentChapterId.value === id) currentContent.value = ''
+    if (currentChapterId.value === id) {
+      currentContent.value = ''
+      alert('加载章节失败：' + (err instanceof Error ? err.message : String(err)))
+    }
   }
 }
 
@@ -202,7 +205,7 @@ function handleSearchScrollToOffset(offset: number) {
 }
 .panel-left { overflow: hidden; }
 .panel-center { overflow: hidden; display: flex; flex-direction: column; }
-.panel-right { overflow: hidden; }
+.panel-right { overflow-y: auto; }
 .empty-state {
   height: 100%; display: flex; align-items: center; justify-content: center; background: #0d1117;
 }

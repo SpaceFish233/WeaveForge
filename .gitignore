@@ -13,6 +13,9 @@ frontend/dist/
 frontend/.nuxt/
 frontend/.vite/
 
+# Generated files
+frontend/package.json.md5
+
 # Database
 *.db
 *.sqlite

@@ -6,7 +6,8 @@ import { config } from '../../wailsjs/go/models'
 type AppConfig = config.Config
 
 const apiConfig = ref<AppConfig | null>(null)
-const apiSaved = ref(false)
+const llmSaved = ref(false)
+const embedSaved = ref(false)
 const testLLMStatus = ref<'idle'|'testing'|'ok'|'fail'>('idle')
 const testEmbedStatus = ref<'idle'|'testing'|'ok'|'fail'>('idle')
 const testEmbedResult = ref('')
@@ -29,15 +30,27 @@ async function handleTestLLM() {
   setTimeout(() => { if (testLLMStatus.value !== 'testing') testLLMStatus.value = 'idle' }, 3000)
 }
 
-async function handleSave() {
+async function handleSaveLLM() {
   if (!apiConfig.value) return
   try {
     await UpdateConfig(new config.Config({
       llm: new config.LLMConfig(apiConfig.value.llm),
       embedding: new config.EmbeddingConfig(apiConfig.value.embedding),
     }))
-    apiSaved.value = true
-    setTimeout(() => { apiSaved.value = false }, 2000)
+    llmSaved.value = true
+    setTimeout(() => { llmSaved.value = false }, 2000)
+  } catch (e) { console.error(e) }
+}
+
+async function handleSaveEmbedding() {
+  if (!apiConfig.value) return
+  try {
+    await UpdateConfig(new config.Config({
+      llm: new config.LLMConfig(apiConfig.value.llm),
+      embedding: new config.EmbeddingConfig(apiConfig.value.embedding),
+    }))
+    embedSaved.value = true
+    setTimeout(() => { embedSaved.value = false }, 2000)
   } catch (e) { console.error(e) }
 }
 
@@ -120,6 +133,11 @@ onMounted(loadConfig)
         <input v-model="apiConfig.llm.chat_model" placeholder="deepseek-chat / claude-sonnet-4-20250514" />
       </div>
 
+      <div class="form-actions">
+        <button class="btn-primary" @click="handleSaveLLM">保存配置</button>
+        <span v-if="llmSaved" class="saved">✓ 已保存</span>
+      </div>
+
       <div class="divider"></div>
       <h3>Embedding 本地模型</h3>
       <p class="hint">用 llama.cpp + GGUF 在本地运行 embedding 模型。</p>
@@ -183,8 +201,8 @@ onMounted(loadConfig)
       </div>
 
       <div class="form-actions">
-        <button class="btn-primary" @click="handleSave">保存配置</button>
-        <span v-if="apiSaved" class="saved">✓ 已保存</span>
+        <button class="btn-primary" @click="handleSaveEmbedding">保存配置</button>
+        <span v-if="embedSaved" class="saved">✓ 已保存</span>
       </div>
     </div>
     <div v-else class="loading">加载中...</div>
